@@ -4,12 +4,12 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'mkdir /opt/test4'
+                sh 'mkdir /opt/test6'
             }
         }
         stage('abhishek') {
             steps {
-                sh 'mkdir /opt/test5'
+                sh 'mkdir /opt/test7'
             }
         }
     }
