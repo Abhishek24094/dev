@@ -4,12 +4,7 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'mkdir /opt/test1'
-            }
-        }
-        stage('abhishek') {
-            steps {
-                sh 'mkdir /opt/test2'
+                git url:'https://github.com/Abhishek24094/dev.git'
             }
         }
     }
