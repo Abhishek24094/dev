@@ -1,0 +1,79 @@
+pipeline {
+    agent any
+    parameters {
+        string(name: 'IMAGE_NAME', defaultValue: 'bigdata/analytic_apd', description: '')
+        string(name: 'ECR', defaultValue: '820233355588.dkr.ecr.us-east-1.amazonaws.com/', description: '')
+        string(name: 'TAG', defaultValue: 'latest', description: '')
+        string(name: 'CLUSTER_NAME', defaultValue: 'TEST', description: '')
+        string(name: 'SERVICE_NAME', defaultValue: 'TEST', description: '')
+        string(name: 'DEPLOY_TO', defaultValue: '', description: '')
+        string(name: 'DEPLOY_COMMIT', defaultValue: '', description: '')
+    }
+    stages {
+        stage('Started'){steps{slackSend ( message: "Build Triggered")}}
+        stage('Checkout Commit') {
+            when {
+                expression { params.DEPLOY_COMMIT != '' }
+            }
+            steps {
+                checkout([$class: 'GitSCM',
+                    branches: [[name: "${params.DEPLOY_COMMIT}"]]
+                ])
+            }
+        }
+         stage('SonarQube Analysis')
+        { steps{
+         withSonarQubeEnv('sonar')
+         {
+             sh "sonar-scanner -Dsonar.projectKey=xxx -Dsonar.sources=."
+         }}
+        }
+        stage('Build') {
+            steps {
+                slackSend ( message: "Build Started")
+                notifyBuild('STARTED')
+                sh "\$(aws ecr get-login --no-include-email --region us-east-1)"
+                sh "docker build -t ${params.IMAGE_NAME}:${params.TAG} ."
+                sh "docker tag ${params.IMAGE_NAME}:${params.TAG} ${params.ECR}${params.IMAGE_NAME}:${params.TAG}"
+                slackSend ( message: "Build Completed")
+            }
+        }
+        stage('Deploy') {
+            when {
+                expression { params.DEPLOY_TO == 'production' }
+            }
+            steps {
+                slackSend ( message: "Deployment Started")
+                echo 'Deploying'
+                sh "aws ecs update-service --cluster ${params.CLUSTER_NAME} --service ${params.SERVICE_NAME} --force-new-deployment --region us-east-1"
+                slackSend ( message: "Deployment Completed")
+            }
+        }
+    }
+    post {
+        always {
+            slackSend ( message: "${currentBuild.currentResult}")
+            notifyBuild(currentBuild.result)
+        }
+    }
+}
+
+def notifyBuild(String buildStatus = 'STARTED') {
+    buildStatus = buildStatus ?: 'SUCCESS'
+    String buildPhase = (buildStatus == 'STARTED') ? 'STARTED' : 'FINALIZED'
+    commit = (buildStatus == 'STARTED') ? 'null' : sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'")
+
+    sh """curl -H "Content-Type: application/json" -X POST -d '{
+        "name": "${env.JOB_NAME}",
+        "type": "pipeline",
+        "build": {
+            "phase": "${buildPhase}",
+            "status": "${buildStatus}",
+            "number": ${env.BUILD_ID},
+            "scm": {
+                "commit": "${commit}"
+            },
+            "artifacts": {}
+        }
+    }' """
+}

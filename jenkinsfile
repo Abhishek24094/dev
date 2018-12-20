@@ -11,7 +11,7 @@ pipeline {
         {
          withSonarQubeEnv('sonar')
          {
-             sh "python hello_world.py sonar:sonar"
+             sh "sonar-scanner -Dsonar.projectKey=xxx -Dsonar.sources=."
          }
         }
     }
