@@ -14,5 +14,14 @@ pipeline {
              sh "sonar-scanner -Dsonar.projectKey=xxx -Dsonar.sources=."
          }
         }
+        
     }
+    post {
+        always {
+            slackSend ( message: "${currentBuild.currentResult}")
+            notifyBuild(currentBuild.result)
+        }
+    }
+}
+
 }
