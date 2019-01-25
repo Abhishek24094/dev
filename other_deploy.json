@@ -1,0 +1,70 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Parameters": {
+		"AppEnv": {
+			"Type": "String",
+			"Description": "Application environment for all the resources being deployed",
+			"Default": "QAS"
+		}
+	},
+	"Resources": {
+		"SNS2SQS": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": {
+					"Fn::Sub": "https://s3.us-east-2.amazonaws.com/belcorp-templates/sns_sqs.json"
+				},
+				"Parameters": {
+					"AppEnv": {
+						"Ref": "AppEnv"
+					}
+				},
+				"TimeoutInMinutes": "20"
+			}
+		},
+		"DynamoDB": {
+			"Type": "AWS::CloudFormation::Stack",
+			"Properties": {
+				"TemplateURL": "https://s3.us-east-2.amazonaws.com/belcorp-templates/dynamodb.json",
+				"Parameters": {
+					"AppEnv": {
+						"Ref": "AppEnv"
+					}
+				},
+				"TimeoutInMinutes": "20"
+			}
+		}
+	},
+	"Outputs": {
+		"GlobalTopicARN": {
+			"Value": {
+				"Fn::GetAtt": ["SNS2SQS", "Outputs.GlobalTopicARN"]
+			}
+		},
+		"ETLQueueInfo": {
+			"Value": {
+				"Fn::GetAtt": ["SNS2SQS", "Outputs.ETLQueueInfo"]
+			}
+		},
+		"NotificationQueueInfo": {
+			"Value": {
+				"Fn::GetAtt": ["SNS2SQS", "Outputs.NotificationQueueInfo"]
+			}
+		},
+		"ProcessingStatusQueueInfo": {
+			"Value": {
+				"Fn::GetAtt": ["SNS2SQS", "Outputs.ProcessingStatusQueueInfo"]
+			}
+		},
+		"tableRequestsLog1Name": {
+			"Value": {
+				"Fn::GetAtt": ["DynamoDB", "Outputs.tableRequestsLog1Name"]
+			}
+		},
+		"tableRequestsProcessingLog1Name": {
+			"Value": {
+				"Fn::GetAtt": ["DynamoDB", "Outputs.tableRequestsProcessingLog1Name"]
+			}
+		}
+	}
+}

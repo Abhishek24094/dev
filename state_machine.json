@@ -1,0 +1,325 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "AWS Step Functions for Job Manager",
+    "Parameters": {
+        "AppEnv": {
+            "Type": "String",
+            "Description": "Application environment, for this deployment"
+        },
+        "DeployTag": {
+            "Type": "String",
+            "Description": "Distinct deployment tag ex: BLUE, GREEN"
+        },
+        "PredictorAPIURL": {
+            "Type": "String",
+            "Description": "Predictor API URL from loadbalancers template"
+        },
+        "S3Bucket": {
+            "Type": "String",
+            "Default" : "belcorp-templates",
+            "Description": "s3 bucket name"
+        },
+        "LambdaExecutionRole": {
+            "Type": "String",
+            "Description": "IAM Role for all Lambda execution"
+        },
+        "StateMachineExecutionRole": {
+            "Type": "String",
+            "Description": "IAM Role for StateMachine execution"
+        }
+    },      
+    "Resources": {
+        "LambdaStateMachine": {
+            "Type": "AWS::StepFunctions::StateMachine",
+            "Properties": {
+                "StateMachineName": { "Fn::Sub": "States-ForecastDigital-${AppEnv}-${DeployTag}" },
+                "RoleArn": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${StateMachineExecutionRole}"},
+                "Fn::Transform": {
+                    "Name": "AWS::Include",
+                    "Parameters": {
+                        "Location": {
+                            "Fn::Sub": "s3://belcorp-templates/state_machine_def.json"
+                        }
+                    }
+                }
+            }
+        },
+        "LaunchSparkJob": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function to submit a spark job",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-LaunchSparkJob-${DeployTag}" },
+                 "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } ,
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    }
+                },
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-LaunchSparkJob-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Handler": "lambda_function.lambda_handler",
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "LaunchSparkJobLambda.py.zip"
+                }
+            }
+        },
+        "DescribeSparkJobStatus": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function to check the status of the submitted job",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-DescribeSparkJobStatus-${DeployTag}" },
+                 "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } ,
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    }
+                },
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-DescribeSparkJobStatus-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Handler": "lambda_function.lambda_handler",
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "DescribeSparkJobStatusLambda.py.zip"
+                }
+            }
+        },
+        "SuccessFileCheckS3": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function to poll S3 for the success file",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-SuccessFileCheckS3-${DeployTag}" },
+                "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } ,
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    }
+                },
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-SuccessFileCheckS3-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Handler": "lambda_function.lambda_handler",
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "SuccessFileCheckS3Lambda.py.zip"
+                }
+            }
+        },
+        "HTTPCallToPredictor": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function to send HTTP request to the predictor",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-HTTPCallToPredictor-${DeployTag}"},
+                "Environment": { 
+                    "Variables": {
+                        "PredictorAPIURL": { "Ref": "PredictorAPIURL" },
+                        "APP_ENV": { "Ref": "AppEnv" } ,
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    }  
+                },
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-HTTPCallToPredictor-${DeployTag}"} }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Handler": "lambda_function.lambda_handler",
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "HTTPCallToPredictorLambda.py.zip"
+                }
+            }
+        },
+        "RenameS3Files": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function to rename S3 files",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-RenameS3Files-${DeployTag}" },
+                "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } ,
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    }
+                },
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-RenameS3Files-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Handler": "lambda_function.lambda_handler",
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "RenameS3FilesLambda.py.zip"
+                }
+            }
+        },
+        "PublishOutputOfPredictorToSNS": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function to publish predictor output to SNS",
+                "FunctionName": {"Fn::Sub": "ForecastDigital-${AppEnv}-PublishOutputOfPredictorToSNS-${DeployTag}"},
+                "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } , 
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" },
+                        "SNS_TOPIC": { "Fn::Sub": "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:sns-ForecastDigital-GlobalTopic-${AppEnv}"} 
+                    } 
+                },
+                "Handler": "lambda_function.lambda_handler",
+                "Tags": [{ "Key": "Name", "Value": {"Fn::Sub": "ForecastDigital-${AppEnv}-PublishOutputOfPredictorToSNS-${DeployTag}"} }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "PublishOutputOfPredictorToSNSLambda.py.zip"
+                }
+            }
+        },
+        "SQSTrigger": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function for SQS trigger",
+                "FunctionName": {"Fn::Sub": "ForecastDigital-${AppEnv}-SQSTrigger-${DeployTag}"},
+                "Environment": { 
+                    "Variables": { 
+                        "stepFunctionTriggerARN": { "Ref": "LambdaStateMachine" } ,
+                        "APP_ENV": { "Ref": "AppEnv" } , 
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" },
+                        "MAX_ETL_LIMIT": 20
+                    }
+                },
+                "Handler": "lambda_function.lambda_handler",
+                "Tags": [{ "Key": "Name", "Value": {"Fn::Sub": "ForecastDigital-${AppEnv}-SQSTrigger-${DeployTag}"} }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "SQSTriggerPy.py.zip"
+                }
+            }
+        },
+        "PostProcessingSparkJob": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function for post processing of spark job",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-PostProcessingSparkJob-${DeployTag}" },
+                "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } , 
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    } 
+                },
+                "Handler": "lambda_function.lambda_handler",
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-PostProcessingSparkJob-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "PostProcessingSparkJob.py.zip"
+                }
+            }
+        },
+        "GetSparkJobStatus": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function for checking spark job status",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-GetSparkJobStatus-${DeployTag}" },
+                "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } , 
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    } 
+                },
+                "Handler": "lambda_function.lambda_handler",
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-GetSparkJobStatus-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "GetSparkJobStatus.py.zip"
+                }
+            }
+        },
+        "PredictorOutputCheck": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function for checking predictor's output",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-PredictorOutputCheck-${DeployTag}" },
+                "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } , 
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    } 
+                },
+                "Handler": "lambda_function.lambda_handler",
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-PredictorOutputCheck-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "PredictorOutputCheck.py.zip"
+                }
+            }
+        },
+        "ReadSparkJobStatus": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Description": "Lambda function for reading spark job status",
+                "FunctionName": { "Fn::Sub": "ForecastDigital-${AppEnv}-ReadSparkJobStatus-${DeployTag}" },
+                "Environment": { 
+                    "Variables": { 
+                        "APP_ENV": { "Ref": "AppEnv" } , 
+                        "DEPLOY_TAG": { "Ref": "DeployTag" },
+                        "S3_BUCKET": { "Ref": "S3Bucket" }
+                    } 
+                },
+                "Handler": "lambda_function.lambda_handler",
+                "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "ForecastDigital-${AppEnv}-ReadSparkJobStatus-${DeployTag}" } }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "Direccion", "Value": "TRAD" }, { "Key": "Entorno", "Value": {"Ref": "AppEnv"} }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+                "Role": { "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${LambdaExecutionRole}"},
+                "Runtime": "python3.7",
+                "Timeout" : 10,
+                "Code": {
+                    "S3Bucket": { "Ref": "S3Bucket" },
+                    "S3Key": "ReadSparkJobStatus.py.zip"
+                }
+            }
+        },
+        "LambdaFntionEventSourceMapping": {
+            "Type": "AWS::Lambda::EventSourceMapping",
+            "Properties": {
+                "BatchSize": 1,
+                "Enabled": true,
+                "EventSourceArn": {"Fn::Sub": "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:sqs-ForecastDigital-ETLQueue-${AppEnv}" },
+                "FunctionName": { "Fn::GetAtt": ["SQSTrigger", "Arn"] }
+            }
+        }
+    },
+    "Outputs": {
+        "StateMachineName": { "Value": { "Fn::GetAtt": ["LambdaStateMachine", "Name"] } },
+        "StateMachineArn": { "Value": { "Ref": "LambdaStateMachine" } },
+        "LaunchSparkJobArn": { "Value": { "Fn::GetAtt": ["LaunchSparkJob", "Arn"] } },
+        "DescribeSparkJobStatusArn": { "Value": { "Fn::GetAtt": ["DescribeSparkJobStatus", "Arn"] } },
+        "SuccessFileCheckS3Arn": { "Value": { "Fn::GetAtt": ["SuccessFileCheckS3", "Arn"] } },
+        "HTTPCallToPredictorArn": { "Value": { "Fn::GetAtt": ["HTTPCallToPredictor", "Arn"] } },
+        "RenameS3FilesArn": { "Value": { "Fn::GetAtt": ["RenameS3Files", "Arn"] } },
+        "PublishOutputOfPredictorToSNSArn": { "Value": { "Fn::GetAtt": ["PublishOutputOfPredictorToSNS", "Arn"] } },
+        "SQSTriggerArn": { "Value": { "Fn::GetAtt": ["SQSTrigger", "Arn"] } }
+    }
+}

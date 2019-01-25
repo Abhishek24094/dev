@@ -1,0 +1,195 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "ALBSubnetId": {
+            "Type": "List<AWS::EC2::Subnet::Id>",
+            "Description": "Select two subnets for the ALB in your selected VPC"
+        },
+        "VpcId": {
+            "Type": "AWS::EC2::VPC::Id",
+            "Description": "Select a VPC that allows instances to access the Internet"
+        },
+        "EcsALBSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup::Id",
+            "Description": "Security group to be attached to VPC"
+        },
+        "AppEnv": {
+            "Type": "String",
+            "Description": "Application environment for the ALB resource"
+        },
+        "DeployTag": {
+            "Type": "String",
+            "Description": "Deployment tags ex: Blue, Green etc."
+        }
+    },
+    "Resources": {
+        "ECSALB": {
+            "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties": {
+                "Name": {
+                    "Fn::Sub": "${AppEnv}ALB-ForecastDigital-${DeployTag}"
+                },
+                "Scheme": "internet-facing",
+                "LoadBalancerAttributes": [{
+                    "Key": "idle_timeout.timeout_seconds",
+                    "Value": "30"
+                }],
+                "Subnets": {
+                    "Ref": "ALBSubnetId"
+                },
+                "SecurityGroups": [{
+                    "Ref": "EcsALBSecurityGroup"
+                }],
+                "Tags": [{
+                    "Key": "Name",
+                    "Value": {
+                        "Fn::Sub": "${AppEnv}ALBForecastDigital-JMPRED-${DeployTag}"
+                    }
+                }, {
+                    "Key": "Grupo",
+                    "Value": "ForecastDigital"
+                }, {
+                    "Key": "ServerRol",
+                    "Value": "JobManager"
+                }, {
+                    "Key": "Entorno",
+                    "Value": {
+                        "Ref": "AppEnv"
+                    }
+                }, {
+                    "Key": "CTLAdmin",
+                    "Value": "NO"
+                }, {
+                    "Key": "Tipo",
+                    "Value": "Proyecto"
+                }, {
+                    "Key": "Direccion",
+                    "Value": "TRAD"
+                }]
+            }
+        },
+        "ALBListener": {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "DefaultActions": [{
+                    "Type": "forward",
+                    "TargetGroupArn": {
+                        "Ref": "ECSTG"
+                    }
+                }],
+                "LoadBalancerArn": {
+                    "Ref": "ECSALB"
+                },
+                "Port": "80",
+                "Protocol": "HTTP"
+            }
+        },
+        "ECSALBListenerRule": {
+            "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+            "DependsOn": "ALBListener",
+            "Properties": {
+                "Actions": [{
+                    "Type": "forward",
+                    "TargetGroupArn": {
+                        "Ref": "ECSTG"
+                    }
+                }],
+                "Conditions": [{
+                    "Field": "path-pattern",
+                    "Values": [
+                        "/forecast/*"
+                    ]
+                }],
+                "ListenerArn": {
+                    "Ref": "ALBListener"
+                },
+                "Priority": 1
+            }
+        },
+        "ECSTG": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "DependsOn": "ECSALB",
+            "Properties": {
+                "HealthCheckIntervalSeconds": 10,
+                "HealthCheckPath": "/forecast/healthcheck/v1",
+                "HealthCheckProtocol": "HTTP",
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "Name": {
+                    "Fn::Sub": "ALB-DigitalJMTG-${AppEnv}-${DeployTag}"
+                },
+                "Port": 8000,
+                "Protocol": "HTTP",
+                "UnhealthyThresholdCount": 2,
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            }
+        },
+        "PredALBListenerRule": {
+            "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+            "DependsOn": "ALBListener",
+            "Properties": {
+                "Actions": [{
+                    "Type": "forward",
+                    "TargetGroupArn": {
+                        "Ref": "PredECSTG"
+                    }
+                }],
+                "Conditions": [{
+                    "Field": "path-pattern",
+                    "Values": [
+                        "/predict/*"
+                    ]
+                }],
+                "ListenerArn": {
+                    "Ref": "ALBListener"
+                },
+                "Priority": 2
+            }
+        },
+        "PredECSTG": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "DependsOn": "ECSALB",
+            "Properties": {
+                "HealthCheckIntervalSeconds": 10,
+                "HealthCheckPath": "/predict/healthcheck/v1",
+                "HealthCheckProtocol": "HTTP",
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "Name": {
+                    "Fn::Sub": "ALB-DigitalPRTG-${AppEnv}-${DeployTag}"
+                },
+                "Port": 8088,
+                "Protocol": "HTTP",
+                "UnhealthyThresholdCount": 2,
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "ECSALB": {
+            "Value": {
+                "Ref": "ECSALB"
+            }
+        },
+        "DNSALB": {
+            "Description": "Your ALB DNS Name",
+            "Value": {
+                "Fn::GetAtt": ["ECSALB", "DNSName"]
+            }
+        },
+        "ECSTG": {
+            "Value": {
+                "Ref": "ECSTG"
+            }
+        },
+        "PredECSTG": {
+            "Value": {
+                "Ref": "PredECSTG"
+            }
+        }
+    }
+}

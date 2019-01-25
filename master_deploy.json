@@ -1,0 +1,189 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "AppEnv": {
+            "Type": "String",
+            "Description": "Application environment for the ALB resource",
+            "Default": "QAS"
+        },
+        "DeployTag": {
+            "Type": "String",
+            "Description": "Deployment tags ex: Blue, Green etc.",
+            "Default": "BLUE"
+        },
+        "VpcId": {
+            "Type": "String",
+            "Description": "Select a VPC that allows instances to access the Internet",
+            "Default": "vpc-026dcdbecb2604790"
+        },
+        "KeyName": {
+            "Type": "String",
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the ECS instances",
+            "Default": "Jagan-Belcorp"
+        },
+        "SpotPrice": {
+            "Type": "String",
+            "Description": "Maximum price to bid for Spot instances",
+            "Default": "0.492"
+        },
+        "SpotDesiredCapacity": {
+            "Type": "Number",
+            "Description": "Number of spot instances to launch",
+            "Default": "1"
+        },
+        "ALBSubnetId": {
+            "Type": "String",
+            "Description": "Select two Public subnets for the ALB in your selected VPC",
+            "Default": "subnet-044f9fb5702e5f175,subnet-0824f211ac697af00"
+        },
+        "SubnetId": {
+            "Type": "String",
+            "Description": "Select two private subnets with NAT-G/W for ECS services",
+            "Default": "subnet-00d7d2afd9a262bae,subnet-07258571cbfcf7d85"
+        },
+        "IamSpotFleetRoleName": {
+            "Type": "String",
+            "Description": "IAM Role for Spot Fleet",
+            "Default": "aws-ec2-spot-fleet-tagging-role"
+        },
+        "SpotAllocationStrategy": {
+            "Type": "String",
+            "AllowedValues": ["lowestPrice", "diversified"],
+            "Default": "lowestPrice"
+        },
+        "SpotAutoscalingRole": {
+            "Type": "String",
+            "Description": "IAM Role for Spot AutoScaling",
+            "Default": "AWSServiceRoleForApplicationAutoScaling_EC2SpotFleetRequest"
+        }
+    },
+    "Resources": {
+        "LoadBalancer": {
+            "Type": "AWS::CloudFormation::Stack",
+            "Properties": {
+                "TemplateURL": "https://s3.us-east-2.amazonaws.com/belcorp-templates/alb.json", 
+                "Parameters": {
+                    "EcsALBSecurityGroup": "sg-01a88ff769dd2e978",
+                    "VpcId": {
+                        "Ref": "VpcId"
+                    },
+                    "ALBSubnetId": {
+                        "Ref": "ALBSubnetId"
+                    },
+                    "AppEnv": {
+                        "Ref": "AppEnv"
+                    },
+                    "DeployTag": {
+                        "Ref": "DeployTag"
+                    }
+                },
+                "TimeoutInMinutes": "30"
+            }
+        },
+        "ECSservice": {
+            "Type": "AWS::CloudFormation::Stack",
+            "Properties": {
+                "TemplateURL": "https://s3.us-east-2.amazonaws.com/belcorp-templates/ecs.json",
+                "Parameters": {
+                    "ECSTG": {
+                        "Fn::GetAtt": ["LoadBalancer", "Outputs.ECSTG"]
+                    },
+                    "PredECSTG": {
+                        "Fn::GetAtt": ["LoadBalancer", "Outputs.PredECSTG"]
+                    },
+                    "ECSServiceRole": {"Fn::Sub": "ForecastDigital-JM-ECS-Role-${AppEnv}"},
+                    "AutoscalingRole": {"Fn::Sub": "ForecastDigital-JM-AutoScaling-Role-${AppEnv}"},
+                    "EC2InstanceProfile": {"Fn::Sub": "ForecastDigital-JM-EC2-Role-${AppEnv}"},
+                    "VpcId": {
+                        "Ref": "VpcId"
+                    },
+                    "KeyName": {
+                        "Ref": "KeyName"
+                    },
+                    "SubnetId": {
+                        "Ref": "SubnetId"
+                    },
+                    "AppEnv": {
+                        "Ref": "AppEnv"
+                    },
+                    "DeployTag": {
+                        "Ref": "DeployTag"
+                    },
+                    "EcsSecurityGroup": "sg-05222e58dd6c5c741",
+                    "SpotPrice": {
+                        "Ref": "SpotPrice"
+                    },
+                    "IamSpotFleetRoleName": {
+                        "Ref": "IamSpotFleetRoleName"
+                    },
+                    "SpotAllocationStrategy": {
+                        "Ref": "SpotAllocationStrategy"
+                    },
+                    "SpotDesiredCapacity": {
+                        "Ref": "SpotDesiredCapacity"
+                    },
+                    "SpotAutoscalingRole": {
+                        "Ref": "SpotAutoscalingRole"
+                    },
+                    "InstanceType": "m5.12xlarge",
+                    "InstanceType2": "m4.4xlarge",
+                    "InstanceType3": "m5.4xlarge",
+                    "InstanceType4": "m5a.4xlarge"
+                },
+                "TimeoutInMinutes": "40"
+            }
+        },
+		"StateMachine": {
+            "Type": "AWS::CloudFormation::Stack",
+            "Properties": {
+                "TemplateURL": "https://s3.us-east-2.amazonaws.com/belcorp-templates/step_function.json",
+                "Parameters": {
+                    "AppEnv": {
+                        "Ref": "AppEnv"
+                    },
+                    "DeployTag": {
+                        "Ref": "DeployTag"
+                    },
+                    "PredictorAPIURL": {
+                        "Fn::Join": ["", ["http://", {
+                            "Fn::GetAtt": ["LoadBalancer", "Outputs.DNSALB"]
+                        }, "/predict/api/v1"]]
+                    },
+                    "LambdaExecutionRole": {"Fn::Sub": "ForecastDigital-Lambda-Exec-Role-${AppEnv}"},
+                    "StateMachineExecutionRole": {"Fn::Sub": "ForecastDigital-SM-Exec-Role-${AppEnv}"}
+                },
+                "TimeoutInMinutes": "20"
+            }
+        }
+    },
+    "Outputs": {
+        "JobManagerHealthcheckURL": {
+            "Value": {
+                "Fn::Join": ["", ["http://", {
+                    "Fn::GetAtt": ["LoadBalancer", "Outputs.DNSALB"]
+                }, "/forecast/healthcheck/v1"]]
+            }
+        },
+        "PredictorHealthcheckURL": {
+            "Value": {
+                "Fn::Join": ["", ["http://", {
+                    "Fn::GetAtt": ["LoadBalancer", "Outputs.DNSALB"]
+                }, "/predict/healthcheck/v1"]]
+            }
+        },
+        "PredictorAPIURL": {
+            "Value": {
+                "Fn::Join": ["", ["http://", {
+                    "Fn::GetAtt": ["LoadBalancer", "Outputs.DNSALB"]
+                }, "/predict/api/v1"]]
+            }
+        },
+        "JobManagerAPIURL": {
+            "Value": {
+                "Fn::Join": ["", ["http://", {
+                    "Fn::GetAtt": ["LoadBalancer", "Outputs.DNSALB"]
+                }, "/forecast/api/v1"]]
+            }
+        }
+    }
+}

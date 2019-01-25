@@ -1,0 +1,374 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "VpcId": {
+            "Type": "AWS::EC2::VPC::Id",
+            "Description": "Select a VPC that allows instances to access the Internet",
+            "Default": "vpc-02efe8138cb2815d5"
+        }
+    },
+    "Resources": {
+        "EcsALBSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupName": {
+                    "Fn::Sub": "AWS-SG-ForecastDigitalLoadBalancers"
+                },
+                "GroupDescription": "Security Group para los balanceadores de carga de Forecast Digital",
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            }
+        },
+        "EcsALBSecurityGroupHTTPinbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsALBSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "80",
+                "ToPort": "80",
+                "CidrIp": "0.0.0.0/0",
+                "Description": "HTTP from Anywhere"
+            }
+        },
+        "EcsALBSecurityGroupTCPinbound2": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsALBSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "CidrIp": "0.0.0.0/0",
+                "Description": "HTTP from Anywhere"
+            }
+        },
+        "EcsSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "DependsOn": "EcsALBSecurityGroup",
+            "Properties": {
+                "GroupName": {
+                    "Fn::Sub": "AWS-SG-ForecastDigitalServices"
+                },
+                "GroupDescription": "Security Group para los servicios de Forecast Digital",
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            }
+        },
+        "EcsSecurityGroupHTTPinbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "80",
+                "ToPort": "80",
+                "CidrIp": "10.12.0.0/16",
+                "Description": "HTTP from VPC 1"
+            }
+        },
+        "EcsSecurityGroupSSHinbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "CidrIp": "10.12.0.0/16",
+                "Description": "SSH from VPC 1"
+            }
+        },
+        "EcsSecurityGroupTCPinbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "CidrIp": "10.12.0.0/16",
+                "Description": "TCP from VPC 1"
+            }
+        },
+        "EcsSecurityGroupTCPinboundENGG": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "CidrIp": "106.51.16.143/24",
+                "Description": "TCP rules as per Engg reqs"
+            }
+        },
+        "EcsSecurityGroupTCPinboundENGG2": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "CidrIp": "200.48.158.141/24",
+                "Description": "TCP rules as per Engg reqs"
+            }
+        },
+        "EcsSecurityGroupHTTPinbound2": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "80",
+                "ToPort": "80",
+                "CidrIp": "172.19.0.0/16",
+                "Description": "HTTP from Belcorp"
+            }
+        },
+        "EcsSecurityGroupSSHinbound2": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "CidrIp": "172.19.0.0/16",
+                "Description": "SSH from Belcorp"
+            }
+        },
+        "EcsSecurityGroupTCPinbound2": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "CidrIp": "172.19.0.0/16",
+                "Description": "TCP from Belcorp"
+            }
+        },
+        "EcsSecurityGroupALBports": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EcsSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "SourceSecurityGroupId": {
+                    "Ref": "EcsALBSecurityGroup"
+                }
+            }
+        },
+        "EMRMasterSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupName": {
+                    "Fn::Sub": "EMR-SG-ForecastDigital-Master"
+                },
+                "GroupDescription": "Security group for EMR master node - Replace CidrIp with allowed ip ranges",
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            }
+        },
+        "EMRMasterSSHInbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRMasterSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "CidrIp": "13.58.214.0/24",
+                "Description": "SSH rules for allowed IP/ranges"
+            }
+        },
+        "EMRMasterTCPInbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRMasterSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "CidrIp": "13.58.214.0/24",
+                "Description": "TCP rules for allowed IP/range"
+            }
+        },
+        "EMRMasterTCPInboundforServiceAccess": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRMasterSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "SourceSecurityGroupId": {
+                    "Ref": "EMRServiceAccessSG"
+                },
+                "Description": "TCP access from EMRServiceAccessSG to EMR master (required for clusters in private subnets)"
+            }
+        },
+        "EMRCoreNodeSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "DependsOn": "EMRMasterSecurityGroup",
+            "Properties": {
+                "GroupName": {
+                    "Fn::Sub": "EMR-SG-ForecastDigital-Node"
+                },
+                "GroupDescription": "Security group for EMR core nodes - Replace CidrIp with allowed ip ranges",
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            }
+        },
+        "EMRCoreNodeSSHInbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRCoreNodeSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "CidrIp": "13.58.214.0/24",
+                "Description": "SSH inbound rules for core nodes from trusted IP/range"
+            }
+        },
+        "EMRCoreNodeTCPInboundfromMaster": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRCoreNodeSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "SourceSecurityGroupId": {
+                    "Ref": "EMRMasterSecurityGroup"
+                },
+                "Description": "TCP inbound rule from master node SG to Core node on any TCP connection"
+            }
+        },
+        "EMRCoreNodeSSHInboundfromMaster": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRCoreNodeSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "22",
+                "ToPort": "22",
+                "SourceSecurityGroupId": {
+                    "Ref": "EMRMasterSecurityGroup"
+                },
+                "Description": "SSH rule for master node SG to access Core node"
+            }
+        },
+        "EMRCoreNodeTCPInboundfromServiceAccess": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRCoreNodeSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "SourceSecurityGroupId": {
+                    "Ref": "EMRServiceAccessSG"
+                },
+                "Description": "Access from ServiceAccess SG to Core on ant TCP port {ServiceAccessSecurityGroup is required when EMR cluster in on Private network}"
+            }
+        },
+        "EMRServiceAccessSG": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupName": {
+                    "Fn::Sub": "EMR-SG-ForecastDigital-Service-Access"
+                },
+                "GroupDescription": "ServiceAccessSecurityGroup for cluster on Private subnets",
+                "VpcId": {
+                    "Ref": "VpcId"
+                }
+            }
+        },
+        "EMRServiceAccessTCPInbound": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRServiceAccessSG"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "SourceSecurityGroupId": {
+                    "Ref": "EMRMasterSecurityGroup"
+                },
+                "Description": "TCP rules for access from Master node security group"
+            }
+        },
+        "EMRServiceAccessTCPInbound2": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "EMRServiceAccessSG"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "SourceSecurityGroupId": {
+                    "Ref": "EMRCoreNodeSecurityGroup"
+                },
+                "Description": "TCP rules for access from core node security group"
+            }
+        }
+    },
+    "Outputs": {
+        "EcsSecurityGroup": {
+            "Value": {
+                "Ref": "EcsSecurityGroup"
+            }
+        },
+        "EcsALBSecurityGroup": {
+            "Value": {
+                "Ref": "EcsALBSecurityGroup"
+            }
+        },
+        "EMRServiceAccessSG": {
+            "Value": {
+                "Ref": "EMRServiceAccessSG"
+            }
+        },
+        "EMRCoreNodeSecurityGroup": {
+            "Value": {
+                "Ref": "EMRCoreNodeSecurityGroup"
+            }
+        },
+        "EMRMasterSecurityGroup": {
+            "Value": {
+                "Ref": "EMRMasterSecurityGroup"
+            }
+        }
+    }
+}

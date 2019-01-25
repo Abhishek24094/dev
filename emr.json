@@ -1,0 +1,204 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EMR cluster with 1 master and 2 core with auto scaling based on CPU usage",
+  "Parameters": {
+    "MasterInstanceType": {
+      "Description": "Instance type to be used as the master instance in the EMR cluster",
+      "Type": "String",
+      "Default": "m4.xlarge"
+    },
+    "CoreInstanceType": {
+      "Description": "Instance type to be used for core instances in the EMR cluster",
+      "Type": "String",
+      "Default": "m4.xlarge"
+    },
+    "NumberOfCoreInstances": {
+      "Description": "Number of core instances to be running under a master",
+      "Type": "Number",
+      "Default": 1
+    },
+	"VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "Select a VPC that allows instances to access the Internet using NAT",
+	  "Default": "vpc-026dcdbecb2604790"
+    },
+    "SubnetId": {
+      "Description": "Must be Valid private subnet ID having NAT gw and auto assign ipv4 enabled",
+      "Type": "AWS::EC2::Subnet::Id",
+	  "Default": "subnet-07258571cbfcf7d85"
+    },
+	"KeyName": {
+      "Description": "A valid key to use to access the master instance",
+      "Default": "Jagan-Belcorp",
+      "Type": "String"
+    },
+	"BidPrice": {
+      "Description": "Valid current spot price for the instance type being used",
+      "Default": "0.400",
+      "Type": "Number"
+    },
+    "LogUri": {
+      "Description": "Must be a valid output S3 URL",
+      "Default": "s3://df-emr-logs-belcorp",
+      "Type": "String"
+    },
+    "ReleaseLabel": {
+      "Description": "Must be a valid EMR release version supporting the applications being installed in EMR",
+      "Default": "emr-5.19.0",
+      "Type": "String"
+    },
+	"ApplicationEnvironment": {
+      "Type": "String",
+      "Description": "Application environment for the EMR resource ex: QAS, DEV, PROD etc.",
+	  "Default": "QAS"
+    },
+	"EMRClusterinstanceProfile": {
+      "Type": "String",
+      "Description": "Instance profile role for EMR cluster",
+	  "Default": "ForecastDigital-EMR-CIP-Role-rc"
+    },
+	"EMRClusterServiceRole": {
+      "Type": "String",
+      "Description": "Service role for EMR cluster",
+	  "Default": "ForecastDigital-EMR-CS-Role-rc"
+    }
+  },
+  "Resources": {
+    "EMRCluster": {
+      "Type": "AWS::EMR::Cluster",
+      "Properties": {
+        "Applications": [ { "Name": "Ganglia" }, { "Name": "Hadoop" }, { "Name": "Zeppelin" }, { "Name": "Spark" } ],
+        "Tags": [{ "Key": "Name", "Value": "ECSLNX-ForecastDigital-EMR" }, { "Key": "Grupo", "Value": "ForecastDigital" }, { "Key": "ServerRol", "Value": "EMR" }, { "Key": "Entorno", "Value": { "Ref": "ApplicationEnvironment" } }, { "Key": "CTLAdmin", "Value": "NO" }, { "Key": "Tipo", "Value": "Proyecto" }],
+        "Instances": {
+          "Ec2SubnetId": { "Ref" : "SubnetId" },
+		  "Ec2KeyName": { "Ref": "KeyName" },
+		  "EmrManagedMasterSecurityGroup": "sg-0306f45df96fcc835",
+		  "EmrManagedSlaveSecurityGroup": "sg-07c7de90afbb65387",
+		  "ServiceAccessSecurityGroup": "sg-0e8095331b1b78adc",
+          "MasterInstanceGroup": {
+            "InstanceCount": 1,
+            "InstanceType": { "Ref": "MasterInstanceType" },
+            "Market": "ON_DEMAND",
+            "Name": "Master"
+          },
+          "CoreInstanceGroup": {
+		    "AutoScalingPolicy": { 
+			   "Constraints": { 
+				   "MaxCapacity": 3,
+                   "MinCapacity": 1
+               },
+               "Rules": [ 
+				  { 
+                     "Action": { 
+                        "SimpleScalingPolicyConfiguration": { 
+                           "AdjustmentType": "CHANGE_IN_CAPACITY",
+                           "CoolDown": 300,
+                           "ScalingAdjustment": 1
+                        }
+                     },
+                     "Description": "Scale up core instance when YARNMemoryAvailablePercentage is less than 100 percent",
+                     "Name": "Scale-Out-YARNmem",
+                     "Trigger": { 
+                        "CloudWatchAlarmDefinition": { 
+                           "ComparisonOperator": "LESS_THAN_OR_EQUAL",
+						   "Unit": "PERCENT",
+                           "Dimensions": [ 
+                              { 
+                                 "Key": "JobFlowID",
+                                 "Value": "${emr.clusterId}"
+                              }
+                           ],
+                           "EvaluationPeriods": 1,
+                           "MetricName": "YARNMemoryAvailablePercentage",
+                           "Namespace": "AWS/ElasticMapReduce",
+                           "Period": 300,
+                           "Statistic": "AVERAGE",
+                           "Threshold": 100
+                     }
+                  }
+                },
+				  { 
+                     "Action": { 
+                        "SimpleScalingPolicyConfiguration": { 
+                           "AdjustmentType": "CHANGE_IN_CAPACITY",
+                           "CoolDown": 300,
+                           "ScalingAdjustment": -2
+                        }
+                     },
+                     "Description": "Scale down core instance when apps running is less than or equal to 2",
+                     "Name": "Scale-In-AppsRunning",
+                     "Trigger": { 
+                        "CloudWatchAlarmDefinition": { 
+                           "ComparisonOperator": "LESS_THAN_OR_EQUAL",
+                           "Dimensions": [ 
+                              { 
+                                 "Key": "JobFlowID",
+                                 "Value": "${emr.clusterId}"
+                              }
+                           ],
+                           "EvaluationPeriods": 1,
+                           "MetricName": "AppsRunning",
+                           "Namespace": "AWS/ElasticMapReduce",
+                           "Period": 300,
+                           "Statistic": "AVERAGE",
+                           "Threshold": 2
+                     }
+                  }
+                },
+				  { 
+                     "Action": { 
+                        "SimpleScalingPolicyConfiguration": { 
+                           "AdjustmentType": "CHANGE_IN_CAPACITY",
+                           "CoolDown": 300,
+                           "ScalingAdjustment": 2
+                        }
+                     },
+                     "Description": "Scale up core instances if apps pending is greater than or equal to 2",
+                     "Name": "Scale-Out-AppsPending",
+                     "Trigger": { 
+                        "CloudWatchAlarmDefinition": { 
+                           "ComparisonOperator": "GREATER_THAN_OR_EQUAL",
+                           "Dimensions": [ 
+                              { 
+                                 "Key": "JobFlowID",
+                                 "Value": "${emr.clusterId}"
+                              }
+                           ],
+                           "EvaluationPeriods": 1,
+                           "MetricName": "AppsRunning",
+                           "Namespace": "AWS/ElasticMapReduce",
+                           "Period": 300,
+                           "Statistic": "AVERAGE",
+                           "Threshold": 2
+                     }
+                  }
+                }				
+              ]
+            },
+			"BidPrice": { "Ref": "BidPrice" },
+            "InstanceCount": { "Ref": "NumberOfCoreInstances" },
+            "InstanceType": { "Ref": "CoreInstanceType" },
+            "Market": "SPOT",
+            "Name": "Core"
+          },
+          "TerminationProtected": false
+        },
+        "VisibleToAllUsers": true,
+        "JobFlowRole": { "Ref": "EMRClusterinstanceProfile" },
+        "ReleaseLabel": { "Ref": "ReleaseLabel" },
+        "LogUri": { "Ref": "LogUri" },
+        "Name": { "Fn::Join": [ "-", [ "EMR-forecastdigital", { "Ref": "ApplicationEnvironment" } ] ] },
+        "AutoScalingRole": "EMR_AutoScaling_DefaultRole",
+        "ServiceRole": { "Ref": "EMRClusterServiceRole" }
+      }
+    }
+  },
+  "Outputs": {
+    "EmrMasterDNSIP": {
+      "Value": { "Fn::GetAtt" : [ "EMRCluster", "MasterPublicDNS" ] }
+    },
+	"EmrClusterID": {
+      "Value": { "Ref": "EMRCluster" }	
+    }
+  }
+}

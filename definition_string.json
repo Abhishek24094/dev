@@ -1,0 +1,205 @@
+DefinitionString:
+ Fn::Sub: |
+    {
+        "Comment": "ETL Steps",
+        "StartAt": "Lambda:Spark-Submit",
+        "States": {
+            "Lambda:Spark-Submit": {
+                "Type": "Task",
+                "Resource": "${LaunchSparkJob.Arn}",
+                "Next": "Wait",
+                "Retry": [{
+                    "ErrorEquals": ["States.ALL"],
+                    "IntervalSeconds": 180,
+                    "MaxAttempts": 5,
+                    "BackoffRate": 1
+                }]
+            },
+            "Wait": {
+                "Type": "Wait",
+                "Seconds": 180,
+                "Next": "Spark-Job-Status"
+            },
+            "Spark-Job-Status": {
+                "Type": "Task",
+                "Resource": "${DescribeSparkJobStatus.Arn}",
+                "Next": "StepCompleted?",
+                "Retry": [{
+                    "ErrorEquals": ["States.ALL"],
+                    "IntervalSeconds": 60,
+                    "MaxAttempts": 5,
+                    "BackoffRate": 1
+                }]
+            },
+            "StepCompleted?": {
+                "Type": "Choice",
+                "Choices": [{
+                        "Variable": "$.status",
+                        "StringEquals": "RUNNING",
+                        "Next": "Wait"
+                    },
+                    {
+                        "Variable": "$.status",
+                        "StringEquals": "COMPLETED",
+                        "Next": "getYarnStatus"
+                    },
+                    {
+                        "Variable": "$.status",
+                        "StringEquals": "FAILED",
+                        "Next": "PublishToSNS-Failed"
+                    }
+                ]
+            },
+            "getYarnStatus": {
+                "Type": "Task",
+                "Resource": "${GetSparkJobStatus.Arn}",
+                "Next": "Wait10"
+            },
+            "Wait10": {
+                "Type": "Wait",
+                "Seconds": 10,
+                "Next": "Step-Status"
+            },
+            "Step-Status": {
+                "Type": "Task",
+                "Resource": "${DescribeSparkJobStatus.Arn}",
+                "Next": "StatusStepCompleted?",
+                "Retry": [{
+                    "ErrorEquals": ["States.ALL"],
+                    "IntervalSeconds": 60,
+                    "MaxAttempts": 5,
+                    "BackoffRate": 1
+                }]
+            },
+            "StatusStepCompleted?": {
+                "Type": "Choice",
+                "Choices": [{
+                        "Variable": "$.status",
+                        "StringEquals": "RUNNING",
+                        "Next": "Wait10"
+                    },
+                    {
+                        "Variable": "$.status",
+                        "StringEquals": "COMPLETED",
+                        "Next": "readYarnStatus"
+                    },
+                    {
+                        "Variable": "$.status",
+                        "StringEquals": "FAILED",
+                        "Next": "PublishToSNS-Failed"
+                    }
+                ]
+            },
+            "readYarnStatus": {
+                "Type": "Task",
+                "Resource": "${ReadSparkJobStatus.Arn}",
+                "Next": "CompletedSparkJob?"
+            },
+            "CompletedSparkJob?": {
+                "Type": "Choice",
+                "Choices": [{
+                        "Variable": "$.jobStatus",
+                        "NumericEquals": 0,
+                        "Next": "PostProcessing"
+                    },
+                    {
+                        "Variable": "$.jobStatus",
+                        "NumericEquals": 1,
+                        "Next": "Wait180"
+                    }
+                ]
+            },
+            "PostProcessing": {
+                "Type": "Task",
+                "Resource": "${PostProcessingSparkJob.Arn}",
+                "Next": "S3-Poll-For-Success-File"
+            },
+            "Wait180": {
+                "Type": "Wait",
+                "Seconds": 180,
+                "Next": "getYarnStatus"
+            },
+            "S3-Poll-For-Success-File": {
+                "Type": "Task",
+                "Resource": "${SuccessFileCheckS3.Arn}",
+                "Next": "Present?"
+            },
+            "Present?": {
+                "Type": "Choice",
+                "Choices": [{
+                        "Variable": "$.Filestatus",
+                        "NumericEquals": 0,
+                        "Next": "PublishToSNS-Failed"
+                    },
+                    {
+                        "Variable": "$.Filestatus",
+                        "NumericEquals": 1,
+                        "Next": "Renaming"
+                    }
+                ]
+            },
+            "Renaming": {
+                "Type": "Task",
+                "Resource": "${RenameS3Files.Arn}",
+                "Next": "HTTP Call to predictor"
+            },
+            "HTTP Call to predictor": {
+                "Type": "Task",
+                "Resource": "${HTTPCallToPredictor.Arn}",
+                "Next": "Success?"
+            },
+            "Success?": {
+                "Type": "Choice",
+                "Choices": [{
+                        "Variable": "$.attempt_number",
+                        "NumericEquals": 0,
+                        "Next": "CheckForPredictor'sOutput"
+                    },
+                    {
+                        "Variable": "$.attempt_number",
+                        "NumericEquals": 10,
+                        "Next": "PublishToSNS-Failed"
+                    }
+                ],
+                "Default": "Wait For Predictor To Respond"
+            },
+            "Wait For Predictor To Respond": {
+                "Type": "Wait",
+                "Seconds": 20,
+                "Next": "HTTP Call to predictor"
+            },
+            "CheckForPredictor'sOutput": {
+                "Type": "Task",
+                "Resource": "${PredictorOutputCheck.Arn}",
+                "Next": "Present-Predictor-Files?"
+            },
+            "Present-Predictor-Files?":{
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.PredictorFilestatus",
+                  "NumericEquals": 0,
+                  "Next": "PublishToSNS-Failed"
+                },
+                {
+                  "Variable": "$.PredictorFilestatus",
+                  "NumericEquals": 1,
+                  "Next": "PublishToSNS"
+                }
+              ]
+            },
+            "PublishToSNS": {
+                "Type": "Task",
+                "Resource": "${PublishOutputOfPredictorToSNS.Arn}",
+                "End": true
+            }, 
+            "PublishToSNS-Failed":{
+              "Type": "Task",
+              "Resource": "${PublishOutputOfPredictorToSNS.Arn}",
+              "Next":"Failed"
+            },
+            "Failed": {
+                "Type": "Fail"
+            }
+        }
+    }

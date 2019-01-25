@@ -1,0 +1,337 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "AppEnv": {
+            "Type": "String",
+            "Description": "Environment to which the SNS topics and SQS is deployed ex: QAS, DEV, PROD etc.",
+            "Default": "QAS"
+        }
+    },
+    "Resources": {
+        "ETLQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+                "DelaySeconds": "0",
+                "QueueName": {
+                    "Fn::Sub": "sqs-ForecastDigital-ETLQueue-${AppEnv}"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "Value": "SQS-ForecastDigital"
+                }, {
+                    "Key": "Grupo",
+                    "Value": "ForecastDigital"
+                }, {
+                    "Key": "ServerRol",
+                    "Value": "SQS"
+                }, {
+                    "Key": "Entorno",
+                    "Value": {
+                        "Ref": "AppEnv"
+                    }
+                }, {
+                    "Key": "CTLAdmin",
+                    "Value": "NO"
+                }, {
+                    "Key": "Tipo",
+                    "Value": "Proyecto"
+                }, {
+                    "Key": "Direccion",
+                    "Value": "TRAD"
+                }],
+                "MaximumMessageSize": "262144",
+                "MessageRetentionPeriod": "345600",
+                "ReceiveMessageWaitTimeSeconds": "0",
+                "VisibilityTimeout": "30"
+            }
+        },
+        "NotificationQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+                "DelaySeconds": "0",
+                "QueueName": {
+                    "Fn::Sub": "sqs-ForecastDigital-NotificationQueue-${AppEnv}"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "Value": "SQS-ForecastDigital"
+                }, {
+                    "Key": "Grupo",
+                    "Value": "ForecastDigital"
+                }, {
+                    "Key": "ServerRol",
+                    "Value": "SQS"
+                }, {
+                    "Key": "Entorno",
+                    "Value": {
+                        "Ref": "AppEnv"
+                    }
+                }, {
+                    "Key": "CTLAdmin",
+                    "Value": "NO"
+                }, {
+                    "Key": "Tipo",
+                    "Value": "Proyecto"
+                }, {
+                    "Key": "Direccion",
+                    "Value": "TRAD"
+                }],
+                "MaximumMessageSize": "262144",
+                "MessageRetentionPeriod": "345600",
+                "ReceiveMessageWaitTimeSeconds": "0",
+                "VisibilityTimeout": "30"
+            }
+        },
+        "ProcessingStatusQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+                "DelaySeconds": "0",
+                "QueueName": {
+                    "Fn::Sub": "sqs-ForecastDigital-ProcessingStatusQueue-${AppEnv}"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "Value": "SQS-ForecastDigital"
+                }, {
+                    "Key": "Grupo",
+                    "Value": "ForecastDigital"
+                }, {
+                    "Key": "ServerRol",
+                    "Value": "SQS"
+                }, {
+                    "Key": "Entorno",
+                    "Value": {
+                        "Ref": "AppEnv"
+                    }
+                }, {
+                    "Key": "CTLAdmin",
+                    "Value": "NO"
+                }, {
+                    "Key": "Tipo",
+                    "Value": "Proyecto"
+                }, {
+                    "Key": "Direccion",
+                    "Value": "TRAD"
+                }],
+                "MaximumMessageSize": "262144",
+                "MessageRetentionPeriod": "345600",
+                "ReceiveMessageWaitTimeSeconds": "0",
+                "VisibilityTimeout": "30"
+            }
+        },
+        "GlobalTopic": {
+            "Type": "AWS::SNS::Topic",
+            "Properties": {
+                "TopicName": {
+                    "Fn::Sub": "sns-ForecastDigital-GlobalTopic-${AppEnv}"
+                },
+                "DisplayName": {
+                    "Fn::Sub": "sns-ForecastDigital-GlobalTopic-${AppEnv}"
+                }
+            }
+        },
+        "ETLSubscription": {
+            "Type": "AWS::SNS::Subscription",
+            "Properties": {
+                "TopicArn": {
+                    "Ref": "GlobalTopic"
+                },
+                "Endpoint": {
+                    "Fn::GetAtt": ["ETLQueue", "Arn"]
+                },
+                "Protocol": "sqs",
+                "FilterPolicy": {
+                    "event": ["etl"]
+                }
+            }
+        },
+        "NotificationSubscription": {
+            "Type": "AWS::SNS::Subscription",
+            "Properties": {
+                "TopicArn": {
+                    "Ref": "GlobalTopic"
+                },
+                "Endpoint": {
+                    "Fn::GetAtt": ["NotificationQueue", "Arn"]
+                },
+                "Protocol": "sqs",
+                "FilterPolicy": {
+                    "event": ["notify_planner"]
+                }
+            }
+        },
+        "ProcessingStatusSubscription": {
+            "Type": "AWS::SNS::Subscription",
+            "Properties": {
+                "TopicArn": {
+                    "Ref": "GlobalTopic"
+                },
+                "Endpoint": {
+                    "Fn::GetAtt": ["ProcessingStatusQueue", "Arn"]
+                },
+                "Protocol": "sqs",
+                "FilterPolicy": {
+                    "event": ["process_updates"]
+                }
+            }
+        },
+        "ETLQueuePolicy": {
+            "Type": "AWS::SQS::QueuePolicy",
+            "Properties": {
+                "Queues": [{
+                    "Ref": "ETLQueue"
+                }],
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Id": "myETLQueuePolicy",
+                    "Statement": [{
+                        "Sid": "Sid1",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "SQS:SendMessage",
+                        "Resource": {
+                            "Fn::GetAtt": [
+                                "ETLQueue",
+                                "Arn"
+                            ]
+                        },
+                        "Condition": {
+                            "StringEquals": {
+                                "aws:SourceArn": {
+                                    "Ref": "GlobalTopic"
+                                }
+                            }
+                        }
+                    }]
+                }
+            }
+        },
+        "NotificationQueuePolicy": {
+            "Type": "AWS::SQS::QueuePolicy",
+            "Properties": {
+                "Queues": [{
+                    "Ref": "NotificationQueue"
+                }],
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Id": "myNotificationQueuePolicy",
+                    "Statement": [{
+                        "Sid": "Sid2",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "SQS:SendMessage",
+                        "Resource": {
+                            "Fn::GetAtt": [
+                                "NotificationQueue",
+                                "Arn"
+                            ]
+                        },
+                        "Condition": {
+                            "StringEquals": {
+                                "aws:SourceArn": {
+                                    "Ref": "GlobalTopic"
+                                }
+                            }
+                        }
+                    }]
+                }
+            }
+        },
+        "ProcessingStatusQueuePolicy": {
+            "Type": "AWS::SQS::QueuePolicy",
+            "Properties": {
+                "Queues": [{
+                    "Ref": "ProcessingStatusQueue"
+                }],
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Id": "myProcessingStatusQueuePolicy",
+                    "Statement": [{
+                        "Sid": "Sid3",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "SQS:SendMessage",
+                        "Resource": {
+                            "Fn::GetAtt": [
+                                "ProcessingStatusQueue",
+                                "Arn"
+                            ]
+                        },
+                        "Condition": {
+                            "StringEquals": {
+                                "aws:SourceArn": {
+                                    "Ref": "GlobalTopic"
+                                }
+                            }
+                        }
+                    }]
+                }
+            }
+        },
+        "GlobalTopicPolicy": {
+            "Type": "AWS::SNS::TopicPolicy",
+            "Properties": {
+                "Topics": [{
+                    "Ref": "GlobalTopic"
+                }],
+                "PolicyDocument": {
+                    "Version": "2008-10-17",
+                    "Id": "myGlobalTopicPolicy",
+                    "Statement": [{
+                        "Sid": "Sid4",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": [
+                            "SNS:GetTopicAttributes",
+                            "SNS:SetTopicAttributes",
+                            "SNS:AddPermission",
+                            "SNS:RemovePermission",
+                            "SNS:DeleteTopic",
+                            "SNS:Subscribe",
+                            "SNS:ListSubscriptionsByTopic",
+                            "SNS:Publish",
+                            "SNS:Receive"
+                        ],
+                        "Resource": {
+                            "Ref": "GlobalTopic"
+                        }
+                    }]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "GlobalTopicARN": {
+            "Value": {
+                "Ref": "GlobalTopic"
+            }
+        },
+        "ETLQueueInfo": {
+            "Value": {
+                "Fn::Join": [" ", ["ARN:", {
+                    "Fn::GetAtt": ["ETLQueue", "Arn"]
+                }, "URL:", {
+                    "Ref": "ETLQueue"
+                }]]
+            }
+        },
+        "NotificationQueueInfo": {
+            "Value": {
+                "Fn::Join": [" ", ["ARN:", {
+                    "Fn::GetAtt": ["NotificationQueue", "Arn"]
+                }, "URL:", {
+                    "Ref": "NotificationQueue"
+                }]]
+            }
+        },
+        "ProcessingStatusQueueInfo": {
+            "Value": {
+                "Fn::Join": [" ", ["ARN:", {
+                    "Fn::GetAtt": ["ProcessingStatusQueue", "Arn"]
+                }, "URL:", {
+                    "Ref": "ProcessingStatusQueue"
+                }]]
+            }
+        }
+    }
+}

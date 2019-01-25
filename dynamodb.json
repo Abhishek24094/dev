@@ -1,0 +1,113 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "AppEnv": {
+            "Type": "String",
+            "Description": "Application environment for the DynamoDB resource ex: QAS, DEV, PROD etc.",
+            "Default": "QAS"
+        }
+    },
+    "Resources": {
+        "tableRequestsLog1": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+                "AttributeDefinitions": [{
+                    "AttributeName": "uuid",
+                    "AttributeType": "S"
+                }],
+                "KeySchema": [{
+                    "AttributeName": "uuid",
+                    "KeyType": "HASH"
+                }],
+                "TableName": {
+                    "Fn::Sub": "DY-forecastdigital-requests-${AppEnv}"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "Value": "DynamoDB-ForecastDigital"
+                }, {
+                    "Key": "Grupo",
+                    "Value": "ForecastDigital"
+                }, {
+                    "Key": "ServerRol",
+                    "Value": "DynamoDB"
+                }, {
+                    "Key": "Entorno",
+                    "Value": {
+                        "Ref": "AppEnv"
+                    }
+                }, {
+                    "Key": "CTLAdmin",
+                    "Value": "NO"
+                }, {
+                    "Key": "Tipo",
+                    "Value": "Proyecto"
+                }, {
+                    "Key": "Direccion",
+                    "Value": "TRAD"
+                }],
+                "ProvisionedThroughput": {
+                    "ReadCapacityUnits": "5",
+                    "WriteCapacityUnits": "5"
+                }
+            }
+        },
+        "tableRequestsProcessingLog1": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+                "AttributeDefinitions": [{
+                    "AttributeName": "uuid",
+                    "AttributeType": "S"
+                }],
+                "KeySchema": [{
+                    "AttributeName": "uuid",
+                    "KeyType": "HASH"
+                }],
+                "TableName": {
+                    "Fn::Sub": "DY-forecastdigital-requestsprocessinglog-${AppEnv}"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "Value": "DynamoDB-ForecastDigital"
+                }, {
+                    "Key": "Grupo",
+                    "Value": "ForecastDigital"
+                }, {
+                    "Key": "ServerRol",
+                    "Value": "DynamoDB"
+                }, {
+                    "Key": "Entorno",
+                    "Value": {
+                        "Ref": "AppEnv"
+                    }
+                }, {
+                    "Key": "CTLAdmin",
+                    "Value": "NO"
+                }, {
+                    "Key": "Tipo",
+                    "Value": "Proyecto"
+                }, {
+                    "Key": "Direccion",
+                    "Value": "TRAD"
+                }],
+                "ProvisionedThroughput": {
+                    "ReadCapacityUnits": "5",
+                    "WriteCapacityUnits": "5"
+                }
+            }
+        }
+    },
+    "Description": "Template to create two DynamoDB Tables with hash key attributes",
+    "Outputs": {
+        "tableRequestsLog1Name": {
+            "Value": {
+                "Ref": "tableRequestsLog1"
+            }
+        },
+        "tableRequestsProcessingLog1Name": {
+            "Value": {
+                "Ref": "tableRequestsProcessingLog1"
+            }
+        }
+    }
+}

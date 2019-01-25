@@ -1,0 +1,1028 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Parameters": {
+        "KeyName": {
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the ECS instances"
+        },
+        "VpcId": {
+            "Type": "AWS::EC2::VPC::Id",
+            "Description": "Select a VPC that allows instances to access the Internet"
+        },
+        "SubnetId": {
+            "Type": "List<AWS::EC2::Subnet::Id>",
+            "Description": "Select atleast two private subnets in your selected VPC"
+        },
+        "AppEnv": {
+            "Type": "String",
+            "Description": "Application environment, for production, this should be QAS"
+        },
+        "DeployTag": {
+            "Type": "String",
+            "Description": "Distinct deployment tag ex: BLUE, GREEN"
+        },
+        "ECSTG": {
+            "Type": "String",
+            "Description": "Target group value"
+        },
+        "PredECSTG": {
+            "Type": "String",
+            "Description": "Predictor Target group value"
+        },
+        "ECSServiceRole": {
+            "Type": "String",
+            "Description": "ECSServiceRole for Service Definition"
+        },
+        "AutoscalingRole": {
+            "Type": "String",
+            "Description": "AutoscalingRole for container autoscaling"
+        },
+        "SpotPrice": {
+            "Type": "String",
+            "Description": "Maximum price to bid for Spot instances"
+        },
+        "IamSpotFleetRoleName": {
+            "Type": "String",
+            "Description": "IAM Role for Spot Fleet"
+        },
+        "SpotAllocationStrategy": {
+            "Type": "String",
+            "AllowedValues": ["lowestPrice", "diversified"]
+        },
+        "SpotDesiredCapacity": {
+            "Type": "Number",
+            "Description": "Number of spot instances to launch"
+        },
+        "SpotAutoscalingRole": {
+            "Type": "String",
+            "Description": "IAM Role for Spot AutoScaling"
+        },
+        "EC2InstanceProfile": {
+            "Type": "String",
+            "Description": "IAM Profile for container instances"
+        },
+        "EcsSecurityGroup": {
+            "Type": "String",
+            "Description": "Security group details"
+        },
+        "InstanceType": {
+            "Description": "EC2 instance type",
+            "Type": "String",
+            "Default": "m5.12xlarge",
+            "AllowedValues": [
+                "m5.12xlarge",
+                "m4.4xlarge",
+                "m5.4xlarge"
+            ],
+            "ConstraintDescription": "Please choose a valid instance type."
+        },
+        "InstanceType2": {
+            "Description": "EC2 instance type",
+            "Type": "String",
+            "Default": "m4.4xlarge",
+            "AllowedValues": [
+                "m5.2xlarge",
+                "m4.4xlarge",
+                "m5.4xlarge"
+            ],
+            "ConstraintDescription": "Please choose a valid instance type."
+        },
+        "InstanceType3": {
+            "Description": "EC2 instance type",
+            "Type": "String",
+            "Default": "m5.4xlarge",
+            "AllowedValues": [
+                "m5.2xlarge",
+                "m4.4xlarge",
+                "m5.4xlarge"
+            ],
+            "ConstraintDescription": "Please choose a valid instance type."
+        },
+        "InstanceType4": {
+            "Description": "EC2 instance type",
+            "Type": "String",
+            "Default": "m5a.4xlarge",
+            "AllowedValues": [
+                "m5a.4xlarge",
+                "m4.4xlarge",
+                "m5.4xlarge"
+            ],
+            "ConstraintDescription": "Please choose a valid instance type."
+        }
+    },
+    "Mappings": {
+        "AWSRegionToAMI": {
+            "us-east-1": {
+                "AMIID": "ami-045f1b3f87ed83659"
+            },
+            "us-east-2": {
+                "AMIID": "ami-0307f7ccf6ea35750"
+            },
+            "us-west-1": {
+                "AMIID": "ami-0285183bbef6224bd"
+            },
+            "us-west-2": {
+                "AMIID": "ami-01b70aea4161476b7"
+            }
+        }
+    },
+    "Conditions": {
+        "CreateWithSpotPrice": {
+            "Fn::Not": [{
+                "Fn::Equals": [{
+                    "Ref": "SpotPrice"
+                }, ""]
+            }]
+        }
+    },
+    "Resources": {
+        "ECSCluster": {
+            "Type": "AWS::ECS::Cluster",
+            "Properties": {
+                "ClusterName": {
+                    "Fn::Sub": "ECSCluster-ForecastDigital-${AppEnv}-${DeployTag}"
+                }
+            }
+        },
+        "CloudwatchLogsGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+                "LogGroupName": {
+                    "Fn::Sub": "Logs-ForecastDigital-${AppEnv}-${DeployTag}"
+                }
+            }
+        },
+        "taskdefinition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+                "Family": {
+                    "Fn::Sub": "${AWS::StackName}-jobmanagerAPI"
+                },
+                "ContainerDefinitions": [{
+                        "Name": "JMAPI",
+                        "Cpu": "2048",
+                        "Essential": "true",
+                        "LogConfiguration": {
+                            "LogDriver": "awslogs",
+                            "Options": {
+                                "awslogs-group": {
+                                    "Ref": "CloudwatchLogsGroup"
+                                },
+                                "awslogs-region": {
+                                    "Ref": "AWS::Region"
+                                },
+                                "awslogs-stream-prefix": "JobManagerAPI"
+                            }
+                        },
+                        "Image": {
+                            "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/digital-forecast/jobmanager/api:alpha"
+                        },
+                        "Memory": "4096",
+                        "Environment": [{
+                            "Name": "REGION_NAME",
+                            "Value": {
+                                "Ref": "AWS::Region"
+                            }
+                        }, {
+                            "Name": "WEBHOOK_SQS_URL",
+                            "Value": {
+                                "Fn::Sub": "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/sqs-ForecastDigital-NotificationQueue-${AppEnv}-${DeployTag}"
+                            }
+                        }, {
+                            "Name": "APP_ENV",
+                            "Value": {
+                                "Ref": "AppEnv"
+                            }
+                        }, {
+                            "Name": "TOPIC_DF_RPE",
+                            "Value": {
+                                "Fn::Sub": "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:sns-ForecastDigital-GlobalTopic-${AppEnv}-${DeployTag}"
+                            }
+                        }],
+                        "PortMappings": [{
+                            "HostPort": 0,
+                            "ContainerPort": 8000
+                        }]
+                    },
+                    {
+                        "Name": "JMUR",
+                        "Cpu": "1024",
+                        "Essential": "true",
+                        "Image": {
+                            "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/digital-forecast/jobmanager/updates_receiver:alpha"
+                        },
+                        "Memory": "2048",
+                        "Environment": [{
+                            "Name": "REGION_NAME",
+                            "Value": {
+                                "Ref": "AWS::Region"
+                            }
+                        }, {
+                            "Name": "PROCESS_UPDATES_QUEUE_URL",
+                            "Value": {
+                                "Fn::Sub": "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/sqs-ForecastDigital-ProcessingStatusQueue-${AppEnv}-${DeployTag}"
+                            }
+                        }, {
+                            "Name": "APP_ENV",
+                            "Value": {
+                                "Ref": "AppEnv"
+                            }
+                        }, {
+                            "Name": "TOPIC_DF_RPE",
+                            "Value": {
+                                "Fn::Sub": "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:sns-ForecastDigital-GlobalTopic-${AppEnv}-${DeployTag}"
+                            }
+                        }]
+                    },
+                    {
+                        "Name": "JMNOTIFY",
+                        "Cpu": "1024",
+                        "Essential": "true",
+                        "Image": {
+                            "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/digital-forecast/jobmanager/notification:alpha"
+                        },
+                        "Memory": "2048",
+                        "Environment": [{
+                            "Name": "REGION_NAME",
+                            "Value": {
+                                "Ref": "AWS::Region"
+                            }
+                        }, {
+                            "Name": "APP_ENV",
+                            "Value": {
+                                "Ref": "AppEnv"
+                            }
+                        }, {
+                            "Name": "NOTIFICATION_QUEUE_URL",
+                            "Value": {
+                                "Fn::Sub": "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/sqs-ForecastDigital-NotificationQueue-${AppEnv}-${DeployTag}"
+                            }
+                        }]
+                    }
+                ]
+            }
+        },
+        "Predtaskdefinition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+                "Family": {
+                    "Fn::Sub": "${AWS::StackName}-PredictorAPI"
+                },
+                "ContainerDefinitions": [{
+                    "Name": "Predictor",
+                    "Cpu": "2048",
+                    "Essential": "true",
+                    "LogConfiguration": {
+                        "LogDriver": "awslogs",
+                        "Options": {
+                            "awslogs-group": {
+                                "Ref": "CloudwatchLogsGroup"
+                            },
+                            "awslogs-region": {
+                                "Ref": "AWS::Region"
+                            },
+                            "awslogs-stream-prefix": "Predictor"
+                        }
+                    },
+                    "Image": {
+                        "Fn::Sub": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/digital-forecast/predictor/api:alpha"
+                    },
+                    "Memory": "4096",
+                    "Environment": [{
+                        "Name": "REGION_NAME",
+                        "Value": {
+                            "Ref": "AWS::Region"
+                        }
+                    }, {
+                        "Name": "APP_ENV",
+                        "Value": {
+                            "Ref": "AppEnv"
+                        }
+                    }],
+                    "PortMappings": [{
+                        "HostPort": 0,
+                        "ContainerPort": 8088
+                    }]
+                }]
+            }
+        },
+        "service": {
+            "Type": "AWS::ECS::Service",
+            "Properties": {
+                "Cluster": {
+                    "Ref": "ECSCluster"
+                },
+                "ServiceName": {
+                    "Fn::Sub": "${AppEnv}-ForecastDigital-JMServiceDef-${DeployTag}"
+                },
+                "DesiredCount": "1",
+                "LoadBalancers": [{
+                    "ContainerName": "JMAPI",
+                    "ContainerPort": "8000",
+                    "TargetGroupArn": {
+                        "Ref": "ECSTG"
+                    }
+                }],
+                "Role": {
+                    "Ref": "ECSServiceRole"
+                },
+                "TaskDefinition": {
+                    "Ref": "taskdefinition"
+                }
+            }
+        },
+        "PredService": {
+            "Type": "AWS::ECS::Service",
+            "Properties": {
+                "Cluster": {
+                    "Ref": "ECSCluster"
+                },
+                "ServiceName": {
+                    "Fn::Sub": "${AppEnv}-ForecastDigital-PredServiceDef-${DeployTag}"
+                },
+                "DesiredCount": "1",
+                "LoadBalancers": [{
+                    "ContainerName": "Predictor",
+                    "ContainerPort": "8088",
+                    "TargetGroupArn": {
+                        "Ref": "PredECSTG"
+                    }
+                }],
+                "Role": {
+                    "Ref": "ECSServiceRole"
+                },
+                "TaskDefinition": {
+                    "Ref": "Predtaskdefinition"
+                }
+            }
+        },
+        "ServiceScalingTarget": {
+            "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+            "DependsOn": "service",
+            "Properties": {
+                "MaxCapacity": 3,
+                "MinCapacity": 1,
+                "ResourceId": {
+                    "Fn::Join": ["", ["service/", {
+                        "Ref": "ECSCluster"
+                    }, "/", {
+                        "Fn::GetAtt": ["service", "Name"]
+                    }]]
+                },
+                "RoleARN": {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${AutoscalingRole}"
+                },
+                "ScalableDimension": "ecs:service:DesiredCount",
+                "ServiceNamespace": "ecs"
+            }
+        },
+        "ServiceScalingPolicy": {
+            "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+            "Properties": {
+                "PolicyName": "AStepPolicy",
+                "PolicyType": "StepScaling",
+                "ScalingTargetId": {
+                    "Ref": "ServiceScalingTarget"
+                },
+                "StepScalingPolicyConfiguration": {
+                    "AdjustmentType": "ChangeInCapacity",
+                    "Cooldown": 60,
+                    "MetricAggregationType": "Average",
+                    "StepAdjustments": [{
+                        "MetricIntervalLowerBound": 0,
+                        "ScalingAdjustment": "2"
+                    }, {
+                        "MetricIntervalUpperBound": 0,
+                        "ScalingAdjustment": "-1"
+                    }]
+                }
+            }
+        },
+        "CPUAlarmHigh": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "EvaluationPeriods": "1",
+                "AlarmName": {
+                    "Fn::Sub": "ForecastDigital-JobManager-${AppEnv}-${DeployTag}-Alarm"
+                },
+                "Statistic": "Average",
+                "Threshold": "80",
+                "AlarmDescription": "ScaleUp Job Manager task if CPU greater than 80 for 5 mins",
+                "Period": "300",
+                "AlarmActions": [{
+                    "Ref": "ServiceScalingPolicy"
+                }],
+                "Namespace": "AWS/ECS",
+                "Dimensions": [{
+                    "Name": "ServiceName",
+                    "Value": {
+                        "Fn::GetAtt": ["service", "Name"]
+                    }
+                }, {
+                    "Name": "ClusterName",
+                    "Value": {
+                        "Ref": "ECSCluster"
+                    }
+                }],
+                "ComparisonOperator": "GreaterThanThreshold",
+                "MetricName": "CPUUtilization",
+                "Unit": "Percent"
+            }
+        },
+        "PredServiceScalingTarget": {
+            "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+            "DependsOn": "PredService",
+            "Properties": {
+                "MaxCapacity": 3,
+                "MinCapacity": 1,
+                "ResourceId": {
+                    "Fn::Join": ["", ["service/", {
+                        "Ref": "ECSCluster"
+                    }, "/", {
+                        "Fn::GetAtt": ["PredService", "Name"]
+                    }]]
+                },
+                "RoleARN": {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${AutoscalingRole}"
+                },
+                "ScalableDimension": "ecs:service:DesiredCount",
+                "ServiceNamespace": "ecs"
+            }
+        },
+        "PredServiceScalingPolicy": {
+            "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+            "Properties": {
+                "PolicyName": "AStepPolicy",
+                "PolicyType": "StepScaling",
+                "ScalingTargetId": {
+                    "Ref": "PredServiceScalingTarget"
+                },
+                "StepScalingPolicyConfiguration": {
+                    "AdjustmentType": "ChangeInCapacity",
+                    "Cooldown": 60,
+                    "MetricAggregationType": "Average",
+                    "StepAdjustments": [{
+                        "MetricIntervalLowerBound": 0,
+                        "ScalingAdjustment": "2"
+                    }, {
+                        "MetricIntervalUpperBound": 0,
+                        "ScalingAdjustment": "-1"
+                    }]
+                }
+            }
+        },
+        "PredCPUAlarmHigh": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "EvaluationPeriods": "1",
+                "AlarmName": {
+                    "Fn::Sub": "ForecastDigital-Predictor-${AppEnv}-${DeployTag}-Alarm"
+                },
+                "Statistic": "Average",
+                "Threshold": "80",
+                "AlarmDescription": "ScaleUp Predictor task if CPU greater than 80 for 5 mins",
+                "Period": "300",
+                "AlarmActions": [{
+                    "Ref": "PredServiceScalingPolicy"
+                }],
+                "Namespace": "AWS/ECS",
+                "Dimensions": [{
+                    "Name": "ServiceName",
+                    "Value": {
+                        "Fn::GetAtt": ["PredService", "Name"]
+                    }
+                }, {
+                    "Name": "ClusterName",
+                    "Value": {
+                        "Ref": "ECSCluster"
+                    }
+                }],
+                "ComparisonOperator": "GreaterThanThreshold",
+                "MetricName": "CPUUtilization",
+                "Unit": "Percent"
+            }
+        },
+        "ContainerInstances": {
+            "Type": "AWS::EC2::SpotFleet",
+            "Properties": {
+                "SpotFleetRequestConfigData": {
+                    "AllocationStrategy": {
+                        "Ref": "SpotAllocationStrategy"
+                    },
+                    "TargetCapacity": {
+                        "Ref": "SpotDesiredCapacity"
+                    },
+                    "IamFleetRole": {
+                        "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${IamSpotFleetRoleName}"
+                    },
+                    "SpotPrice": {
+                        "Fn::If": [
+                            "CreateWithSpotPrice",
+                            {
+                                "Ref": "SpotPrice"
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    },
+                    "TerminateInstancesWithExpiration": true,
+                    "LaunchSpecifications": [{
+                            "TagSpecifications": [{
+                                "ResourceType": "instance",
+                                "Tags": [{
+                                        "Key": "Name",
+                                        "Value": {
+                                            "Fn::Sub": "ECSLNX-ForecastDigital-Spot-Instance-${AppEnv}"
+                                        }
+                                    },
+                                    {
+                                        "Key": "Grupo",
+                                        "Value": "ForecastDigital"
+                                    },
+                                    {
+                                        "Key": "ServerRol",
+                                        "Value": "JobManager"
+                                    },
+                                    {
+                                        "Key": "Entorno",
+                                        "Value": {
+                                            "Ref": "AppEnv"
+                                        }
+                                    },
+                                    {
+                                        "Key": "CTLAdmin",
+                                        "Value": "NO"
+                                    },
+                                    {
+                                        "Key": "Tipo",
+                                        "Value": "Proyecto"
+                                    }, {
+                    			"Key": "Direccion",
+                    			"Value": "TRAD"
+                		    }
+                                ]
+                            }],
+                            "IamInstanceProfile": {
+                                "Arn": {
+                                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:instance-profile/${EC2InstanceProfile}"
+                                }
+                            },
+                            "ImageId": {
+                                "Fn::FindInMap": ["AWSRegionToAMI", {
+                                    "Ref": "AWS::Region"
+                                }, "AMIID"]
+                            },
+                            "InstanceType": {
+                                "Ref": "InstanceType"
+                            },
+                            "KeyName": {
+                                "Ref": "KeyName"
+                            },
+                            "Monitoring": {
+                                "Enabled": true
+                            },
+                            "SecurityGroups": [{
+                                "GroupId": {
+                                    "Ref": "EcsSecurityGroup"
+                                }
+                            }],
+                            "SubnetId": {
+                                "Fn::Select": [0, {
+                                    "Ref": "SubnetId"
+                                }]
+                            },
+                            "UserData": {
+                                "Fn::Base64": {
+                                    "Fn::Join": ["", [
+                                        "#!/bin/bash -xe\n", "echo ECS_CLUSTER=", {
+                                            "Ref": "ECSCluster"
+                                        },
+                                        " >> /etc/ecs/ecs.config\n",
+                                        "export PATH=/usr/local/bin:$PATH\n",
+                                        "yum install -y aws-cli\n",
+                                        "aws configure set default.region ",
+                                        {
+                                            "Ref": "AWS::Region"
+                                        },
+                                        "\n",
+                                        "yum install -y aws-cfn-bootstrap.noarch\n",
+                                        "# Install the files and packages from the metadata\n",
+                                        "/opt/aws/bin/cfn-init -v ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n",
+                                        "# Signal the status from cfn-init\n",
+                                        "/opt/aws/bin/cfn-signal -e $? ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n"
+                                    ]]
+                                }
+                            }
+                        },
+                        {
+                            "TagSpecifications": [{
+                                "ResourceType": "instance",
+                                "Tags": [{
+                                        "Key": "Name",
+                                        "Value": {
+                                            "Fn::Sub": "ECSLNX-ForecastDigital-Spot-Instance2-${AppEnv}"
+                                        }
+                                    },
+                                    {
+                                        "Key": "Grupo",
+                                        "Value": "ForecastDigital"
+                                    },
+                                    {
+                                        "Key": "ServerRol",
+                                        "Value": "JobManager"
+                                    },
+                                    {
+                                        "Key": "Entorno",
+                                        "Value": {
+                                            "Ref": "AppEnv"
+                                        }
+                                    },
+                                    {
+                                        "Key": "CTLAdmin",
+                                        "Value": "NO"
+                                    },
+                                    {
+                                        "Key": "Tipo",
+                                        "Value": "Proyecto"
+                                    }, {
+                    			"Key": "Direccion",
+                    			"Value": "TRAD"
+               			    }
+                                ]
+                            }],
+                            "IamInstanceProfile": {
+                                "Arn": {
+                                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:instance-profile/${EC2InstanceProfile}"
+                                }
+                            },
+                            "ImageId": {
+                                "Fn::FindInMap": ["AWSRegionToAMI", {
+                                    "Ref": "AWS::Region"
+                                }, "AMIID"]
+                            },
+                            "InstanceType": {
+                                "Ref": "InstanceType2"
+                            },
+                            "KeyName": {
+                                "Ref": "KeyName"
+                            },
+                            "Monitoring": {
+                                "Enabled": true
+                            },
+                            "SecurityGroups": [{
+                                "GroupId": {
+                                    "Ref": "EcsSecurityGroup"
+                                }
+                            }],
+                            "SubnetId": {
+                                "Fn::Select": [0, {
+                                    "Ref": "SubnetId"
+                                }]
+                            },
+                            "UserData": {
+                                "Fn::Base64": {
+                                    "Fn::Join": ["", [
+                                        "#!/bin/bash -xe\n", "echo ECS_CLUSTER=", {
+                                            "Ref": "ECSCluster"
+                                        },
+                                        " >> /etc/ecs/ecs.config\n",
+                                        "export PATH=/usr/local/bin:$PATH\n",
+                                        "yum install -y aws-cli\n",
+                                        "aws configure set default.region ",
+                                        {
+                                            "Ref": "AWS::Region"
+                                        },
+                                        "\n",
+                                        "yum install -y aws-cfn-bootstrap.noarch\n",
+                                        "# Install the files and packages from the metadata\n",
+                                        "/opt/aws/bin/cfn-init -v ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n",
+                                        "# Signal the status from cfn-init\n",
+                                        "/opt/aws/bin/cfn-signal -e $? ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n"
+                                    ]]
+                                }
+                            }
+                        },
+                        {
+                            "TagSpecifications": [{
+                                "ResourceType": "instance",
+                                "Tags": [{
+                                        "Key": "Name",
+                                        "Value": {
+                                            "Fn::Sub": "ECSLNX-ForecastDigital-Spot-Instance3-${AppEnv}"
+                                        }
+                                    },
+                                    {
+                                        "Key": "Grupo",
+                                        "Value": "ForecastDigital"
+                                    },
+                                    {
+                                        "Key": "ServerRol",
+                                        "Value": "JobManager"
+                                    },
+                                    {
+                                        "Key": "Entorno",
+                                        "Value": {
+                                            "Ref": "AppEnv"
+                                        }
+                                    },
+                                    {
+                                        "Key": "CTLAdmin",
+                                        "Value": "NO"
+                                    },
+                                    {
+                                        "Key": "Tipo",
+                                        "Value": "Proyecto"
+                                    }, {
+ 			                "Key": "Direccion",
+                    			"Value": "TRAD"
+                		    }
+                                ]
+                            }],
+                            "IamInstanceProfile": {
+                                "Arn": {
+                                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:instance-profile/${EC2InstanceProfile}"
+                                }
+                            },
+                            "ImageId": {
+                                "Fn::FindInMap": ["AWSRegionToAMI", {
+                                    "Ref": "AWS::Region"
+                                }, "AMIID"]
+                            },
+                            "InstanceType": {
+                                "Ref": "InstanceType3"
+                            },
+                            "KeyName": {
+                                "Ref": "KeyName"
+                            },
+                            "Monitoring": {
+                                "Enabled": true
+                            },
+                            "SecurityGroups": [{
+                                "GroupId": {
+                                    "Ref": "EcsSecurityGroup"
+                                }
+                            }],
+                            "SubnetId": {
+                                "Fn::Select": [0, {
+                                    "Ref": "SubnetId"
+                                }]
+                            },
+                            "UserData": {
+                                "Fn::Base64": {
+                                    "Fn::Join": ["", [
+                                        "#!/bin/bash -xe\n", "echo ECS_CLUSTER=", {
+                                            "Ref": "ECSCluster"
+                                        },
+                                        " >> /etc/ecs/ecs.config\n",
+                                        "export PATH=/usr/local/bin:$PATH\n",
+                                        "yum install -y aws-cli\n",
+                                        "aws configure set default.region ",
+                                        {
+                                            "Ref": "AWS::Region"
+                                        },
+                                        "\n",
+                                        "yum install -y aws-cfn-bootstrap.noarch\n",
+                                        "# Install the files and packages from the metadata\n",
+                                        "/opt/aws/bin/cfn-init -v ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n",
+                                        "# Signal the status from cfn-init\n",
+                                        "/opt/aws/bin/cfn-signal -e $? ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n"
+                                    ]]
+                                }
+                            }
+                        },
+                        {
+                            "TagSpecifications": [{
+                                "ResourceType": "instance",
+                                "Tags": [{
+                                        "Key": "Name",
+                                        "Value": {
+                                            "Fn::Sub": "ECSLNX-ForecastDigital-Spot-Instance4-${AppEnv}"
+                                        }
+                                    },
+                                    {
+                                        "Key": "Grupo",
+                                        "Value": "ForecastDigital"
+                                    },
+                                    {
+                                        "Key": "ServerRol",
+                                        "Value": "JobManager"
+                                    },
+                                    {
+                                        "Key": "Entorno",
+                                        "Value": {
+                                            "Ref": "AppEnv"
+                                        }
+                                    },
+                                    {
+                                        "Key": "CTLAdmin",
+                                        "Value": "NO"
+                                    },
+                                    {
+                                        "Key": "Tipo",
+                                        "Value": "Proyecto"
+                                    }, {
+                    			"Key": "Direccion",
+                    			"Value": "TRAD"
+                		    }
+                                ]
+                            }],
+                            "IamInstanceProfile": {
+                                "Arn": {
+                                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:instance-profile/${EC2InstanceProfile}"
+                                }
+                            },
+                            "ImageId": {
+                                "Fn::FindInMap": ["AWSRegionToAMI", {
+                                    "Ref": "AWS::Region"
+                                }, "AMIID"]
+                            },
+                            "InstanceType": {
+                                "Ref": "InstanceType4"
+                            },
+                            "KeyName": {
+                                "Ref": "KeyName"
+                            },
+                            "Monitoring": {
+                                "Enabled": true
+                            },
+                            "SecurityGroups": [{
+                                "GroupId": {
+                                    "Ref": "EcsSecurityGroup"
+                                }
+                            }],
+                            "SubnetId": {
+                                "Fn::Select": [0, {
+                                    "Ref": "SubnetId"
+                                }]
+                            },
+                            "UserData": {
+                                "Fn::Base64": {
+                                    "Fn::Join": ["", [
+                                        "#!/bin/bash -xe\n", "echo ECS_CLUSTER=", {
+                                            "Ref": "ECSCluster"
+                                        },
+                                        " >> /etc/ecs/ecs.config\n",
+                                        "export PATH=/usr/local/bin:$PATH\n",
+                                        "yum install -y aws-cli\n",
+                                        "aws configure set default.region ",
+                                        {
+                                            "Ref": "AWS::Region"
+                                        },
+                                        "\n",
+                                        "yum install -y aws-cfn-bootstrap.noarch\n",
+                                        "# Install the files and packages from the metadata\n",
+                                        "/opt/aws/bin/cfn-init -v ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n",
+                                        "# Signal the status from cfn-init\n",
+                                        "/opt/aws/bin/cfn-signal -e $? ",
+                                        "         --stack ", {
+                                            "Ref": "AWS::StackName"
+                                        },
+                                        "         --resource ContainerInstances ",
+                                        "         --region ", {
+                                            "Ref": "AWS::Region"
+                                        }, "\n"
+                                    ]]
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "SpotServiceScalingTarget": {
+            "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+            "DependsOn": "ContainerInstances",
+            "Properties": {
+                "MaxCapacity": "3",
+                "MinCapacity": "1",
+                "ResourceId": {
+                    "Fn::Sub": "spot-fleet-request/${ContainerInstances}"
+                },
+                "RoleARN": {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/${SpotAutoscalingRole}"
+                },
+                "ScalableDimension": "ec2:spot-fleet-request:TargetCapacity",
+                "ServiceNamespace": "ec2"
+            }
+        },
+        "SpotScalingUpPolicy": {
+            "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+            "Properties": {
+                "PolicyName": "SpotScalingUpPolicy",
+                "PolicyType": "StepScaling",
+                "ScalingTargetId": {
+                    "Ref": "SpotServiceScalingTarget"
+                },
+                "StepScalingPolicyConfiguration": {
+                    "AdjustmentType": "ChangeInCapacity",
+                    "Cooldown": 60,
+                    "MetricAggregationType": "Average",
+                    "StepAdjustments": [{
+                        "MetricIntervalLowerBound": 0,
+                        "ScalingAdjustment": 1
+                    }]
+                }
+            }
+        },
+        "SpotCPUAlarmHigh": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "DependsOn": "SpotScalingUpPolicy",
+            "Properties": {
+                "AlarmDescription": "ScaleUp Spot instances if CPU greater than 60 for 10 mins",
+                "MetricName": "CPUUtilization",
+                "AlarmName": {
+                    "Fn::Sub": "ForecastDigital-Spot-${AppEnv}-${DeployTag}-Alarm"
+                },
+                "Namespace": "AWS/ECS",
+                "Statistic": "Average",
+                "Period": "60",
+                "EvaluationPeriods": "2",
+                "ComparisonOperator": "GreaterThanThreshold",
+                "Threshold": "60",
+                "AlarmActions": [{
+                    "Ref": "SpotScalingUpPolicy"
+                }],
+                "Dimensions": [{
+                        "Name": "ServiceName",
+                        "Value": {
+                            "Fn::GetAtt": ["service", "Name"]
+                        }
+                    },
+                    {
+                        "Name": "ClusterName",
+                        "Value": {
+                            "Ref": "ECSCluster"
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "service": {
+            "Value": {
+                "Ref": "service"
+            }
+        },
+        "ECSCluster": {
+            "Value": {
+                "Ref": "ECSCluster"
+            }
+        },
+        "taskdef": {
+            "Value": {
+                "Ref": "taskdefinition"
+            }
+        }
+    }
+}

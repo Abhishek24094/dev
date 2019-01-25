@@ -1,0 +1,9 @@
+FROM phusion/baseimage:0.10.0
+CMD ["/sbin/my_init"]
+ADD . /code
+WORKDIR /code
+RUN mkdir -p /tmp/models && mkdir -p /tmp/log/predictor
+ADD https://bootstrap.pypa.io/get-pip.py /tmp/get-pip.py
+RUN python3 /tmp/get-pip.py && apt-get update && apt-get install g++-5 --assume-yes
+RUN pip3 --no-cache-dir install -r requirements.txt
+CMD ["gunicorn", "-w", "3", "--bind", "0.0.0.0:8088", "wsgi"]

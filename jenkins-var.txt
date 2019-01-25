@@ -1,0 +1,20 @@
+def awesomeVersion = 'UNKNOWN'
+pipeline {
+    agent any
+
+    stages {
+        stage('SCM Checkout') {
+            steps {
+                git branch: 'master', url: 'git@github.com:rahul-padhee/Sigmoid.git'
+            }
+        }
+        stage('Docker build'){
+            steps{
+                script {
+          awesomeVersion = sh(returnStdout: true, script: 'curl --silent http://169.254.169.254/latest/meta-data/public-ipv4')
+        }
+            sh "docker run --env-file /home/sonarqube/pr-config.env -d --add-host='host1:${awesomeVersion}' 243c286dec63"
+            }
+        }
+    }
+}
