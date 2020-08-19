@@ -1,0 +1,65 @@
+#Used for deploying lambda for various Runtime. Program expect 3 input.
+#1.Lambda Name
+#2.File name. Can be a list with comma seperation
+#3.Runtime
+import boto3
+import sys,shutil,zipfile
+from distutils.dir_util import copy_tree
+import os
+import subprocess
+def cleanUpDirectory():
+    '''Used for Cleaning of directory.Expect no input'''
+    workDir=xxxx
+    subprocess.check_output('sudo chmod -R 777 xxxx',shell=True)
+    for filename in os.listdir(workDir):
+        file_path = os.path.join(workDir, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.remove(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print('Failed to delete %s. Reason: %s' % (file_path, e))
+def copyFile(fileNames,scmDirectory):
+    workDir='xxxxx'
+    fileList=fileNames.split(',')
+    for files in fileList:
+        srcfile=scmDirectory+files
+        if os.path.isfile(srcfile):
+            shutil.copy2(srcfile,workDir)
+        elif os.path.isdir(srcfile):
+            dest=workDir+'/'+files
+            copy_tree(srcfile,dest)
+def makeZip2(fileNames,lambdaName):
+    os.chdir('xxxxxx')
+    cm='sudo zip -r '+lambdaName+'.zip '
+    fileList=fileNames.split(',')
+    for files in fileList:
+        cm=cm+' '+files
+    print(cm)
+    subprocess.check_output(cm,shell=True)
+def uploadToS3(lambdaName):
+    zipFileName=lambdaName+'.zip'
+    objKey='lambda_deployments/'+lambdaName+'.zip'
+    s3 = boto3.resource('s3')
+    s3.meta.client.upload_file(zipFileName, 'xxxxx', objKey)
+def lambdaUpload(lambdaName):
+    lambdaUploader = boto3.client('lambda')
+    objKey='xxxxx/'+lambdaName+'.zip'
+    response = lambdaUploader.update_function_code(FunctionName=lambdaName,S3Bucket='xxxxx',S3Key=objKey)
+    print(response)
+def beginExecution():
+    '''From here code execution begins'''
+    lambdaName=sys.argv[1]
+    fileNames=sys.argv[2]
+    runtime=sys.argv[3]
+    cleanUpDirectory()
+    if runtime=='Java':
+        copyFile(fileNames,'/build_java/target/')
+    elif runtime=='Python':
+        copyFile(fileNames,'/build_python/')
+    makeZip2(fileNames,lambdaName)
+    uploadToS3(lambdaName)
+    lambdaUpload(lambdaName)
+if __name__=='__main__':
+    beginExecution()

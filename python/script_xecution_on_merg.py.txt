@@ -1,0 +1,111 @@
+import sys
+import subprocess
+import pymysql
+import os.path
+def file_pattern(day):
+    pattern="date -d '+"+str(day)+" day' +%Y_%m_%d"
+    file_pattern=subprocess.check_output(pattern,shell=True)
+    file_pattern=file_pattern.replace("\n","")
+    return(file_pattern)
+def month_pattern(day):
+    pattern="date -d '+"+str(day)+" day' +%Y_%m"
+    month_pattern=subprocess.check_output(pattern,shell=True)
+    month_pattern=month_pattern.replace("\n","")
+    return(month_pattern)
+def file_check(file_date,month_date,location):
+    file_date=file_date.replace("\n","")
+    month_date=month_date.replace("\n","")
+    file_location=location+"/"+month_date+"/"+file_date+".sql"
+    if os.path.isfile(file_location):
+        return 1
+    else:
+        return 0
+def get_put_file_pointer_location(*argv):
+    fp=0
+    if argv[0] == "get":
+        if int(argv[1]) == 0 :
+            query=xxxxx
+        elif int(argv[1]) == 1 :
+            query=xxxxx
+    elif argv[0] == "put":
+        if int(argv[1]) == 0 :
+            query=xxxx
+        if int(argv[1]) == 1 :
+            query=xxxxx
+    print(query)
+    try:
+        db = pymysql.connect("xxxx","xxxx","xxxx","db")
+        cursor = db.cursor()
+        cursor.execute(query)
+        if argv[0] == "get":
+            fp=cursor.fetchall()
+        elif argv[0] == "put":
+            db.commit()
+        db.close()
+    except Exception as ex:
+        print(ex)
+    finally:
+        return fp
+def execute_script(file_date,month_date,location,db_name,infp):
+    executed_query=""
+    error_query=""
+    point=int(infp)
+    file_location=location+"/"+month_date+"/"+file_date+".sql"
+    file_location=file_location.replace("\n","")
+    fp=open(file_location,"r")
+    fp.seek(point)
+    cm=fp.read()
+    out_pointer=fp.tell()
+    fp.close()
+    db = pymysql.connect("host","xxxx","xxxx",db_name)
+    cursor = db.cursor()
+    cm=cm.replace("\n"," ")
+    cm=cm.replace("\t"," ")
+    cm=cm.split(";")
+    for x in cm:
+       if x :
+           x=x+";"
+           try:
+               cursor.execute(x)
+               executed_query=executed_query+x+"\n\n"
+           except Exception as e:
+               print(e)
+               error_query=error_query+x+"\n\n"
+    db.commit()
+    db.close()
+    print("----------------------------------------------------------------query executed for "+file_date+"----------------------------------------------------------------")
+    print("|                                                                *****************************                                                                  |")
+    print("-------------------------------------------------------------------------------------------------------------------------------------------------------------")
+    print(executed_query)
+    print("-------------------------------------------------------------------------------------------------------------------------------------------------------------")
+    print("-----------------------------------------------------------------error query for "+file_date+"------------------------------------------------------------------")
+    print("|                                                                **************************                                                                    |")
+    print("-------------------------------------------------------------------------------------------------------------------------------------------------------------")
+    print(error_query)
+    print("-------------------------------------------------------------------------------------------------------------------------------------------------------------")
+    return out_pointer
+def main():
+   '''
+      INPUT:- Fileloaction,Database name
+      Output:- Return the query executed on db and its exceptions
+   '''
+    location=sys.argv[1]
+    db_name=sys.argv[2]
+    location=location.replace("\n","")
+    db_name=db_name.replace("\n","")
+    for day in range(0,2):
+        file_date=file_pattern(day)
+        month_date=month_pattern(day)
+        presence_check=file_check(file_date,month_date,location)
+        if presence_check==1:
+            infp=str(get_put_file_pointer_location("get",day,db_name))
+            infp=infp.replace(",),)","")
+            infp=infp.replace("((","")
+            infp=infp.replace("\n","")
+            print(infp)
+            out_pointer=execute_script(file_date,month_date,location,db_name,infp)
+            fp=get_put_file_pointer_location("put",day,db_name,out_pointer)
+        else:
+            print("File not Present for date"+file_date)
+if __name__=='__main__':
+    main()

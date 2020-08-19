@@ -1,0 +1,85 @@
+import pymysql
+import json
+import request
+import sys
+import re
+from flask import Flask,request
+from flask_restful import Api, Resource, reqparse
+import config
+import logging
+from datetime import date
+app = Flask(__name__)
+api = Api(app)
+log = logging.getLogger('werkzeug')
+log.disabled = True
+class healthCheck(Resource):
+    def get(self):
+        return(200)
+class Update(Resource):
+    def userNameCheck(self,dbUser,dbHost,dbPassword,userName):
+        try:
+            dbConnection = pymysql.connect(dbHost,dbUser,dbPassword,'mysql')
+            cursor = dbConnection.cursor()
+            query="SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '"+userName+"');"
+            cursor.execute(query)
+            checkValue=cursor.fetchall()
+            checkValue=str(checkValue)
+            checkValue=checkValue.replace(",),)","")
+            checkValue=checkValue.replace("((","")
+        except Exception as e:
+            return("Error occured in Validating username")
+        finally:
+            dbConnection.close()
+            return(int(checkValue))
+    def getDBCredentials(self,databaseName):
+        return(config.db_creds[databaseName]['user'],config.db_creds[databaseName]['host'],config.db_creds[databaseName]['password'])
+    def grantPrivileges(self,dbUser,dbHost,dbPassword,databaseName,tableName,userName):
+        logFileName="granter.log"
+        logging.basicConfig(filename=logFileName,level=logging.INFO,format='%(asctime)s - %(levelname)s - %(message)s')
+        finalMessage={"Granted access for":"","Error occured for table":"","Restricted Table or Special Character found for":""}
+        restricted_table=[xxxxxxx"]
+        tableList=tableName.split(",")
+        try:
+            dbConnection = pymysql.connect(dbHost,dbUser,dbPassword,databaseName)
+            cursor = dbConnection.cursor()
+            for iterator in tableList:
+                iterator=iterator.strip()
+                iterator=iterator.lower()
+                if iterator not in restricted_table and re.match("^[a-zA-Z0-9_]*$", iterator) is not  None:
+                    query="grant select on "+iterator+" to '"+userName+"'@'%';"
+                    try:
+                        cursor.execute(query)
+                        finalMessage["Granted access for"]+=iterator+" "
+                        logging.info("Access granted on table "+iterator+" to user "+userName)
+                    except Exception as e:
+                        finalMessage["Error occured for table"]+=iterator+" "
+                        logging.error("Error occured while granting access for table "+iterator+" to user "+userName)
+                else:
+                    finalMessage["Restricted Table or Special Character found for"]+=iterator+" "
+                    logging.warning("User "+userName+" is trying something fishy with tablename "+iterator)
+        except Exception as e:
+            return("Error in connecting db")
+        finally:
+            dbConnection.commit()
+            dbConnection.close()
+            return(finalMessage)
+    def put(self):
+        payload=request.get_json()
+        tableName=payload['table']
+        databaseName=payload['db']
+        databaseName=databaseName.strip()
+        databaseName=databaseName.lower()
+        if databaseName not in [xxxxx]:
+            return("Wrong database name input")
+        userName=payload['user']
+        userName=userName.lower()
+        dbUser,dbHost,dbPassword=self.getDBCredentials(databaseName)
+        userCheck=self.userNameCheck(dbUser,dbHost,dbPassword,userName)
+        if userCheck==1:
+            message=self.grantPrivileges(dbUser,dbHost,dbPassword,databaseName,tableName,userName)
+            return(message)
+        else:
+            return("Username doesn't exists")
+api.add_resource(Update, "/update")
+api.add_resource(healthCheck, "/health")
+app.run(host='0.0.0.0',port=9081,debug=True)
