@@ -1,0 +1,13 @@
+FROM alpine:latest
+ARG deployment_env
+ARG webapp
+ARG path
+RUN apk add tzdata && cp /usr/share/zoneinfo/Asia/Calcutta /etc/localtime && echo "Asia/Calcutta" > /etc/timezone && apk add openjdk8
+WORKDIR /usr/share/
+ADD https://$path/tomcat8.tar .
+RUN tar -xvf tomcat8.tar
+ADD https://$path/$deployment_env/$webapp.war ./tomcat8/webapps/
+EXPOSE 8081
+#CMD ["ls","-la"]
+CMD ["sh","./tomcat8/bin/catalina.sh","run"]
+STOPSIGNAL SIGTERM
